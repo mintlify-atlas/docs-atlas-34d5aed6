@@ -1,0 +1,479 @@
+---
+title: 'Productos'
+description: 'API para gestionar el catálogo de productos'
+---
+
+## GET /api/productos
+
+Lista todos los productos de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.view`.
+
+### Parámetros de Consulta
+
+<ParamField query="almacen" type="string">
+  Filtrar por almacén: 1 (Virtual) o 2 (Real). Default: 1
+</ParamField>
+
+<ParamField query="search" type="string">
+  Término de búsqueda (busca en código, nombre, descripción)
+</ParamField>
+
+<ParamField query="solo_con_stock" type="boolean">
+  Si es true, solo muestra productos con stock > 0. Default: false
+</ParamField>
+
+### Headers Opcionales
+
+<ParamField header="X-Empresa-Activa" type="integer">
+  ID de la empresa a consultar (sobrescribe la empresa del usuario)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de productos
+  <Expandable title="Estructura">
+    <ResponseField name="id_producto" type="integer">
+      ID único del producto
+    </ResponseField>
+    <ResponseField name="codigo" type="string">
+      Código interno del producto
+    </ResponseField>
+    <ResponseField name="cod_barra" type="string">
+      Código de barras
+    </ResponseField>
+    <ResponseField name="nombre" type="string">
+      Nombre del producto
+    </ResponseField>
+    <ResponseField name="descripcion" type="string">
+      Descripción del producto
+    </ResponseField>
+    <ResponseField name="precio" type="number">
+      Precio de venta
+    </ResponseField>
+    <ResponseField name="costo" type="number">
+      Costo del producto
+    </ResponseField>
+    <ResponseField name="precio_mayor" type="number">
+      Precio por mayor
+    </ResponseField>
+    <ResponseField name="precio_menor" type="number">
+      Precio por menor
+    </ResponseField>
+    <ResponseField name="cantidad" type="integer">
+      Stock actual
+    </ResponseField>
+    <ResponseField name="stock_minimo" type="integer">
+      Stock mínimo
+    </ResponseField>
+    <ResponseField name="stock_maximo" type="integer">
+      Stock máximo
+    </ResponseField>
+    <ResponseField name="almacen" type="string">
+      Almacén: 1 (Virtual) o 2 (Real)
+    </ResponseField>
+    <ResponseField name="categoria_id" type="integer">
+      ID de la categoría
+    </ResponseField>
+    <ResponseField name="unidad_id" type="integer">
+      ID de la unidad de medida
+    </ResponseField>
+    <ResponseField name="codsunat" type="string">
+      Código SUNAT del producto
+    </ResponseField>
+    <ResponseField name="moneda" type="string">
+      Moneda: PEN o USD
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Estado: 1 (Activo), 0 (Inactivo)
+    </ResponseField>
+    <ResponseField name="imagen" type="string">
+      Ruta de la imagen del producto
+    </ResponseField>
+    <ResponseField name="ultima_salida" type="string">
+      Fecha de última salida
+    </ResponseField>
+    <ResponseField name="fecha_ultimo_ingreso" type="string">
+      Fecha de último ingreso
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/productos?almacen=1&search=laptop" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/productos
+
+Crea un nuevo producto en ambos almacenes (virtual y real).
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.create`.
+
+### Parámetros del Body
+
+<ParamField body="codigo" type="string" required>
+  Código interno del producto (único por empresa)
+</ParamField>
+
+<ParamField body="nombre" type="string" required>
+  Nombre del producto
+</ParamField>
+
+<ParamField body="descripcion" type="string">
+  Descripción del producto
+</ParamField>
+
+<ParamField body="cod_barra" type="string">
+  Código de barras
+</ParamField>
+
+<ParamField body="precio" type="number" required>
+  Precio de venta (mínimo 0)
+</ParamField>
+
+<ParamField body="costo" type="number">
+  Costo del producto (mínimo 0)
+</ParamField>
+
+<ParamField body="precio_mayor" type="number">
+  Precio por mayor
+</ParamField>
+
+<ParamField body="precio_menor" type="number">
+  Precio por menor
+</ParamField>
+
+<ParamField body="cantidad" type="integer">
+  Stock inicial (default: 0)
+</ParamField>
+
+<ParamField body="stock_minimo" type="integer">
+  Stock mínimo para alertas
+</ParamField>
+
+<ParamField body="stock_maximo" type="integer">
+  Stock máximo
+</ParamField>
+
+<ParamField body="categoria_id" type="integer">
+  ID de la categoría
+</ParamField>
+
+<ParamField body="unidad_id" type="integer">
+  ID de la unidad de medida
+</ParamField>
+
+<ParamField body="codsunat" type="string">
+  Código SUNAT del producto (para facturación electrónica)
+</ParamField>
+
+<ParamField body="moneda" type="string">
+  Moneda: PEN o USD (default: PEN)
+</ParamField>
+
+<ParamField body="imagen" type="file">
+  Imagen del producto (formatos: jpeg, png, jpg. Máximo: 2MB)
+</ParamField>
+
+### Proceso Automático
+
+Al crear un producto:
+
+1. Crea el producto en el almacén 1 (Virtual)
+2. Crea automáticamente un duplicado en el almacén 2 (Real) con el mismo código
+3. Ambos productos comparten el mismo código pero tienen IDs diferentes
+4. Permite gestionar stock virtual y real por separado
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el producto fue creado exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la creación en ambos almacenes
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Producto creado (almacén virtual)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/productos" \
+  -H "Authorization: Bearer {token}" \
+  -F "codigo=LAP001" \
+  -F "nombre=Laptop HP 15" \
+  -F "descripcion=Laptop HP Core i5 8GB RAM" \
+  -F "precio=2500.00" \
+  -F "costo=2000.00" \
+  -F "cantidad=10" \
+  -F "categoria_id=1" \
+  -F "unidad_id=1" \
+  -F "moneda=PEN" \
+  -F "imagen=@laptop.jpg"
+```
+
+---
+
+## GET /api/productos/{id}
+
+Obtiene el detalle de un producto específico.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del producto
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Producto con sus relaciones (categoría, unidad)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/productos/123" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## PUT /api/productos/{id}
+
+Actualiza un producto existente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del producto
+</ParamField>
+
+### Parámetros del Body
+
+Los mismos que en POST (todos opcionales).
+
+### Sincronización entre Almacenes
+
+Si el producto tiene un duplicado en el otro almacén (mismo código):
+
+- Sincroniza: nombre, descripción, precio, costo, categoría, unidad, codsunat
+- NO sincroniza: stock (cantidad), imagen
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la actualización fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la actualización. Indica si se sincronizó con el otro almacén.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Producto actualizado
+</ResponseField>
+
+<ResponseField name="sincronizado" type="boolean">
+  Indica si se sincronizó con el producto del otro almacén
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X PUT "https://api.ejemplo.com/api/productos/123" \
+  -H "Authorization: Bearer {token}" \
+  -F "precio=2600.00" \
+  -F "cantidad=15"
+```
+
+---
+
+## DELETE /api/productos/{id}
+
+Elimina un producto.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.delete`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del producto
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la eliminación fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la eliminación
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X DELETE "https://api.ejemplo.com/api/productos/123" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/productos/plantilla-excel
+
+Descarga la plantilla Excel para importar productos masivamente.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+Archivo Excel (.xlsx) con el formato requerido para importación.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/productos/plantilla-excel" \
+  -H "Authorization: Bearer {token}" \
+  -o plantilla-productos.xlsx
+```
+
+---
+
+## GET /api/productos/descargar-excel
+
+Exporta todos los productos de la empresa a Excel.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+Archivo Excel (.xlsx) con todos los productos.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/productos/descargar-excel" \
+  -H "Authorization: Bearer {token}" \
+  -o productos.xlsx
+```
+
+---
+
+## POST /api/productos/leer-excel
+
+Lee un archivo Excel y valida los productos antes de importar.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.create`.
+
+### Parámetros del Body
+
+<ParamField body="archivo" type="file" required>
+  Archivo Excel (.xlsx) con los productos
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la lectura fue exitosa
+</ResponseField>
+
+<ResponseField name="productos" type="array">
+  Lista de productos validados del Excel
+</ResponseField>
+
+<ResponseField name="errores" type="array">
+  Lista de errores de validación encontrados
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/productos/leer-excel" \
+  -H "Authorization: Bearer {token}" \
+  -F "archivo=@productos.xlsx"
+```
+
+---
+
+## POST /api/productos/importar-lista
+
+Importa masivamente una lista de productos desde Excel.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `productos.create`.
+
+### Parámetros del Body
+
+<ParamField body="productos" type="array" required>
+  Lista de productos validados (obtenida de `/leer-excel`)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la importación fue exitosa
+</ResponseField>
+
+<ResponseField name="importados" type="integer">
+  Cantidad de productos importados exitosamente
+</ResponseField>
+
+<ResponseField name="errores" type="array">
+  Lista de productos que no se pudieron importar
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/productos/importar-lista" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"productos": [...]}'
+```
+
+---
+
+## Códigos de Error
+
+- **404 Not Found**: Producto no encontrado.
+- **422 Unprocessable Entity**: Error de validación (código duplicado, datos inválidos).
+- **500 Internal Server Error**: Error en el servidor.
+
+## Notas Importantes
+
+- **Doble almacén**: Cada producto se crea automáticamente en almacén 1 (Virtual) y almacén 2 (Real).
+- **Código único**: El código debe ser único por empresa (no puede repetirse en ningún almacén).
+- **Sincronización**: Al actualizar un producto, los datos generales se sincronizan entre almacenes, pero NO el stock.
+- **Stock**: Use `/api/ventas` para descontar stock automáticamente, o gestione movimientos de stock directamente.
+- Las imágenes se almacenan en `storage/app/public/productos/`.
+- El precio incluye IGV si la empresa lo tiene configurado.

@@ -1,0 +1,410 @@
+---
+title: Configuración
+description: Configura las variables de entorno, base de datos y credenciales SUNAT para el sistema de facturación electrónica
+---
+
+## Variables de Entorno
+
+Todas las configuraciones del sistema se gestionan a través del archivo `.env` en la raíz del proyecto. Este archivo contiene las credenciales y configuraciones sensibles que no deben ser versionadas.
+
+## Configuración de la Aplicación
+
+### Configuración Básica
+
+Configura los valores básicos de tu aplicación:
+
+```bash
+APP_NAME="Facturación Electrónica"
+APP_ENV=local
+APP_KEY=base64:...
+APP_DEBUG=true
+APP_URL=http://localhost:8000
+```
+
+**Parámetros:**
+
+- `APP_NAME` - Nombre de la aplicación (aparece en correos y notificaciones)
+- `APP_ENV` - Entorno de ejecución (`local`, `staging`, `production`)
+- `APP_KEY` - Clave de encriptación (generada con `php artisan key:generate`)
+- `APP_DEBUG` - Activar modo debug (usar `false` en producción)
+- `APP_URL` - URL base de la aplicación
+
+<Warning>
+En **producción**, establece `APP_ENV=production` y `APP_DEBUG=false` para mejorar la seguridad y el rendimiento.
+</Warning>
+
+### Configuración de Logs
+
+```bash
+LOG_CHANNEL=stack
+LOG_STACK=single
+LOG_LEVEL=debug
+```
+
+En producción, considera cambiar `LOG_LEVEL=info` o `LOG_LEVEL=error` para reducir el tamaño de los logs.
+
+## Configuración de Base de Datos
+
+### Opción 1: SQLite (Por Defecto)
+
+La configuración por defecto usa SQLite, ideal para desarrollo y despliegues pequeños:
+
+```bash
+DB_CONNECTION=sqlite
+```
+
+Asegúrate de que el archivo de base de datos existe:
+
+```bash
+touch database/database.sqlite
+```
+
+**Ventajas de SQLite:**
+- Sin servidor de base de datos requerido
+- Configuración cero
+- Ideal para desarrollo y testing
+- Perfecto para instalaciones de un solo servidor
+
+### Opción 2: MySQL (Recomendado para Producción)
+
+Para producción o instalaciones multi-usuario, se recomienda MySQL:
+
+```bash
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=facturacion_electronica
+DB_USERNAME=tu_usuario
+DB_PASSWORD=tu_contraseña_segura
+```
+
+**Parámetros:**
+
+- `DB_HOST` - Host del servidor MySQL
+- `DB_PORT` - Puerto del servidor (por defecto 3306)
+- `DB_DATABASE` - Nombre de la base de datos
+- `DB_USERNAME` - Usuario de la base de datos
+- `DB_PASSWORD` - Contraseña del usuario
+
+<Steps>
+
+### Crear Base de Datos MySQL
+
+Conéctate a MySQL y crea la base de datos:
+
+```sql
+CREATE DATABASE facturacion_electronica 
+  CHARACTER SET utf8mb4 
+  COLLATE utf8mb4_unicode_ci;
+```
+
+### Crear Usuario y Otorgar Permisos
+
+```sql
+CREATE USER 'facturacion'@'localhost' IDENTIFIED BY 'contraseña_segura';
+GRANT ALL PRIVILEGES ON facturacion_electronica.* TO 'facturacion'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### Ejecutar Migraciones
+
+```bash
+php artisan migrate
+```
+
+</Steps>
+
+## Configuración de SUNAT
+
+El sistema se integra con SUNAT para la emisión de comprobantes electrónicos. Debes configurar las credenciales y certificados digitales.
+
+### Variables SUNAT Básicas
+
+```bash
+# Tasa IGV (por defecto 18%)
+SUNAT_IGV=0.18
+
+# Entorno (beta para pruebas, production para producción)
+SUNAT_ENVIRONMENT=beta
+```
+
+### Credenciales SOL de SUNAT
+
+Para cada empresa, necesitarás configurar las credenciales SOL (Clave SOL) de SUNAT:
+
+**Ambiente de Pruebas (Beta):**
+
+SUNAT proporciona credenciales de prueba predeterminadas:
+
+```bash
+# Credenciales de prueba SUNAT
+RUC: 20000000001
+Usuario SOL: MODDATOS
+Clave SOL: moddatos
+```
+
+Estas credenciales se usan automáticamente cuando `SUNAT_ENVIRONMENT=beta`.
+
+**Ambiente de Producción:**
+
+Las credenciales SOL reales se configuran por empresa dentro del sistema (ver sección Primeros Pasos). Cada empresa registrada debe tener:
+
+- RUC de la empresa
+- Usuario SOL (proporcionado por SUNAT)
+- Clave SOL (proporcionado por SUNAT)
+- Certificado digital (.pem)
+
+### Configuración de Guías de Remisión Electrónicas (GRE)
+
+Para emitir guías de remisión electrónicas a través de la API REST de SUNAT, necesitas credenciales OAuth:
+
+```bash
+SUNAT_GRE_CLIENT_ID=tu_client_id
+SUNAT_GRE_CLIENT_SECRET=tu_client_secret
+```
+
+<Steps>
+
+### Obtener Credenciales GRE
+
+1. Ingresa a SUNAT Operaciones en Línea con tu Clave SOL
+2. Ve a **Sistema de Emisión Electrónica** > **Guías de Remisión Electrónica**
+3. Solicita las credenciales del API REST (Client ID y Client Secret)
+4. SUNAT te proporcionará las credenciales por correo electrónico
+
+</Steps>
+
+<Note>
+Las credenciales GRE son necesarias **solo** si planeas emitir guías de remisión electrónicas. Para facturas y boletas no son requeridas.
+</Note>
+
+## Configuración de Certificados Digitales
+
+Los comprobantes electrónicos deben ser firmados digitalmente con un certificado válido.
+
+### Certificado de Prueba
+
+Para el ambiente de pruebas (beta), puedes usar un certificado de prueba. Coloca el archivo en:
+
+```bash
+storage/app/sunat/certificados/cert.pem
+```
+
+### Certificado de Producción
+
+Para producción, cada empresa debe tener su certificado digital:
+
+<Steps>
+
+### Obtener Certificado Digital
+
+1. Adquiere un certificado digital de una entidad certificadora autorizada por SUNAT (ej: RENIEC, VerifySign, etc.)
+2. Convierte el certificado a formato PEM si está en otro formato:
+
+```bash
+openssl pkcs12 -in certificado.pfx -out certificado.pem -nodes
+```
+
+### Subir Certificado al Sistema
+
+1. Coloca el certificado en `storage/app/sunat/certificados/`
+2. Renombra el archivo con el RUC de la empresa: `{RUC}.pem`
+3. Ejemplo: `20612706702.pem`
+
+### Configurar Permisos
+
+```bash
+chmod 600 storage/app/sunat/certificados/*.pem
+chown www-data:www-data storage/app/sunat/certificados/*.pem
+```
+
+</Steps>
+
+## Configuración de Almacenamiento
+
+El sistema almacena archivos XML, CDR y certificados en el sistema de archivos local.
+
+### Configuración por Defecto
+
+```bash
+FILESYSTEM_DISK=local
+```
+
+Los archivos se almacenan en:
+
+- **XML generados**: `storage/app/sunat/xml/{ruc}/`
+- **CDR de SUNAT**: `storage/app/sunat/cdr/{ruc}/`
+- **Certificados**: `storage/app/sunat/certificados/`
+
+### Crear Directorios de Almacenamiento
+
+```bash
+mkdir -p storage/app/sunat/xml
+mkdir -p storage/app/sunat/cdr
+mkdir -p storage/app/sunat/certificados
+chmod -R 775 storage/app/sunat
+```
+
+### Almacenamiento en S3 (Opcional)
+
+Para almacenar archivos en AWS S3:
+
+```bash
+FILESYSTEM_DISK=s3
+AWS_ACCESS_KEY_ID=tu_access_key
+AWS_SECRET_ACCESS_KEY=tu_secret_key
+AWS_DEFAULT_REGION=us-east-1
+AWS_BUCKET=tu_bucket_sunat
+AWS_USE_PATH_STYLE_ENDPOINT=false
+```
+
+## Configuración de Colas
+
+El sistema usa colas para operaciones asíncronas con SUNAT (Resumen Diario, Comunicación de Baja, etc.).
+
+```bash
+QUEUE_CONNECTION=database
+```
+
+**Opciones disponibles:**
+
+- `database` - Usa la base de datos (recomendado para empezar)
+- `redis` - Usa Redis (mejor rendimiento en producción)
+- `sync` - Procesamiento síncrono (solo para testing)
+
+### Configurar Worker de Colas
+
+En producción, configura un servicio systemd para ejecutar el worker permanentemente:
+
+```bash
+php artisan queue:work --tries=3 --timeout=90
+```
+
+O usa el comando de desarrollo que incluye el worker:
+
+```bash
+composer dev
+```
+
+<Warning>
+El **worker de colas es obligatorio** para que funcionen correctamente:
+- Resumen Diario de Boletas
+- Comunicación de Baja (anulaciones)
+- Consulta de tickets de Guías de Remisión
+</Warning>
+
+## Configuración de Sesiones
+
+```bash
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+```
+
+- `SESSION_DRIVER` - Dónde se almacenan las sesiones (`database`, `file`, `redis`)
+- `SESSION_LIFETIME` - Duración de la sesión en minutos
+
+## Configuración de Cache
+
+```bash
+CACHE_STORE=database
+```
+
+En producción con tráfico alto, considera usar Redis:
+
+```bash
+CACHE_STORE=redis
+REDIS_CLIENT=phpredis
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+```
+
+## Configuración de Correo Electrónico
+
+Para enviar comprobantes por correo:
+
+```bash
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=tu_correo@gmail.com
+MAIL_PASSWORD=tu_contraseña_app
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=noreply@tuempresa.com
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+## Verificar Configuración
+
+Después de configurar el archivo `.env`, limpia y cachea la configuración:
+
+```bash
+php artisan config:clear
+php artisan config:cache
+php artisan route:cache
+```
+
+Para desarrollo, mantén la configuración sin cachear para ver cambios inmediatamente:
+
+```bash
+php artisan config:clear
+```
+
+## Configuración de Producción
+
+Checklist para configuración de producción:
+
+<Steps>
+
+### Seguridad
+
+```bash
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://tudominio.com
+```
+
+### Base de Datos
+
+- Usa MySQL en lugar de SQLite
+- Configura backups automáticos
+- Usa contraseñas seguras
+
+### SUNAT Producción
+
+```bash
+SUNAT_ENVIRONMENT=production
+```
+
+- Configura credenciales SOL reales
+- Instala certificados digitales válidos
+- Prueba en ambiente beta primero
+
+### Optimización
+
+```bash
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+composer install --optimize-autoloader --no-dev
+```
+
+### Worker de Colas
+
+- Configura supervisor o systemd para el worker
+- Monitorea el estado del worker
+- Configura reinicio automático en caso de fallos
+
+### SSL/HTTPS
+
+- Instala certificado SSL válido
+- Fuerza HTTPS en la configuración del servidor
+- Actualiza `APP_URL` con `https://`
+
+</Steps>
+
+## Próximos Pasos
+
+Ahora que has configurado el sistema, continúa con:
+
+- [Primeros Pasos](/getting-started/first-steps) - Crea tu primera empresa y emite tu primer comprobante

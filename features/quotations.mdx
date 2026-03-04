@@ -1,0 +1,531 @@
+---
+title: 'Cotizaciones'
+description: 'Sistema de gestión de cotizaciones y presupuestos con conversión a ventas'
+icon: 'file-lines'
+---
+
+## Descripción General
+
+El módulo de cotizaciones permite crear presupuestos que posteriormente pueden convertirse en ventas (facturas o boletas). Soporta múltiples monedas, cuotas de pago y descuentos.
+
+## Funcionalidades Principales
+
+### Listar Cotizaciones
+
+Utiliza una vista de base de datos optimizada para el listado.
+
+<CodeGroup>
+```php CotizacionController.php:19-40
+public function index(Request $request)
+{
+    try {
+        $user = $request->user();
+        $idEmpresa = $user->id_empresa;
+        
+        $cotizaciones = DB::table('view_cotizaciones')
+            ->where('id_empresa', $idEmpresa)
+            ->orderBy('id', 'desc')
+            ->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $cotizaciones
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener cotizaciones: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+### Mostrar Cotización
+
+Obtiene una cotización con todas sus relaciones.
+
+<CodeGroup>
+```php CotizacionController.php:45-63
+public function show(Request $request, $id)
+{
+    try {
+        $user = $request->user();
+        $cotizacion = Cotizacion::with(['cliente', 'usuario', 'detalles.producto', 'cuotas'])
+            ->where('id_empresa', $user->id_empresa)
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $cotizacion
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Cotización no encontrada'
+        ], 404);
+    }
+}
+```
+</CodeGroup>
+
+## Crear Cotización
+
+Soporta tres formas de identificar al cliente:
+1. Por `id_cliente` existente
+2. Por `cliente_documento` (busca o crea)
+3. Por `cliente_nombre` libre (sin documento)
+
+<CodeGroup>
+```php CotizacionController.php:68-231
+public function store(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'fecha' => 'required|date',
+        'id_cliente' => 'nullable|exists:clientes,id_cliente',
+        'cliente_documento' => 'nullable|string|max:11',
+        'cliente_datos' => 'nullable|string|max:245',
+        'cliente_nombre' => 'nullable|string|max:255',
+        'moneda' => 'required|in:PEN,USD',
+        'tipo_cambio' => 'nullable|numeric',
+        'aplicar_igv' => 'required|boolean',
+        'descuento' => 'nullable|numeric|min:0',
+        'productos' => 'required|array|min:1',
+        'productos.*.producto_id' => 'required|exists:productos,id_producto',
+        'productos.*.cantidad' => 'required|numeric|min:0.01',
+        'productos.*.precio_unitario' => 'required|numeric|min:0',
+        'productos.*.precio_especial' => 'nullable|numeric|min:0',
+        'cuotas' => 'nullable|array',
+        'cuotas.*.monto' => 'required_with:cuotas|numeric|min:0',
+        'cuotas.*.fecha_vencimiento' => 'required_with:cuotas|date',
+    ]);
+
+    DB::beginTransaction();
+
+    // Resolver cliente
+    $idCliente = $request->id_cliente;
+    $clienteNombre = null;
+
+    if (!$idCliente && $request->cliente_documento) {
+        // Buscar o crear cliente por documento
+        $clienteModel = Cliente::where('documento', $request->cliente_documento)
+            ->where('id_empresa', $idEmpresa)
+            ->first();
+
+        if (!$clienteModel) {
+            $clienteModel = Cliente::create([
+                'documento' => $request->cliente_documento,
+                'datos' => $request->cliente_datos,
+                'direccion' => $request->cliente_direccion ?? '',
+                'id_empresa' => $idEmpresa,
+            ]);
+        }
+        $idCliente = $clienteModel->id_cliente;
+    } elseif (!$idCliente) {
+        // Cliente libre sin documento
+        $clienteNombre = $request->cliente_nombre ?: $request->cliente_datos;
+    }
+
+    // Generar número correlativo
+    $ultimaCotizacion = Cotizacion::where('id_empresa', $idEmpresa)
+        ->orderBy('numero', 'desc')
+        ->first();
+    $numero = $ultimaCotizacion ? $ultimaCotizacion->numero + 1 : 1;
+
+    // Calcular totales
+    $montoBruto = 0;
+    foreach ($request->productos as $prod) {
+        $precio = $prod['precio_especial'] ?? $prod['precio_unitario'];
+        $montoBruto += $precio * $prod['cantidad'];
+    }
+
+    $descuento = $request->descuento ?? 0;
+    $total = $montoBruto - $descuento;
+    
+    $igv = 0;
+    $subtotal = $total;
+
+    if ($request->aplicar_igv) {
+        $subtotal = $total / 1.18;
+        $igv = $total - $subtotal;
+    }
+
+    // Crear cotización
+    $cotizacion = Cotizacion::create([
+        'numero' => $numero,
+        'fecha' => $request->fecha,
+        'id_cliente' => $idCliente,
+        'cliente_nombre' => $clienteNombre,
+        'subtotal' => $subtotal,
+        'igv' => $igv,
+        'total' => $total,
+        'descuento' => $descuento,
+        'aplicar_igv' => $request->aplicar_igv,
+        'moneda' => $request->moneda,
+        'id_empresa' => $idEmpresa,
+        'id_usuario' => $user->id,
+    ]);
+
+    // Crear detalles
+    foreach ($request->productos as $prod) {
+        $precio = $prod['precio_especial'] ?? $prod['precio_unitario'];
+        $subtotalDetalle = $precio * $prod['cantidad'];
+
+        CotizacionDetalle::create([
+            'cotizacion_id' => $cotizacion->id,
+            'producto_id' => $prod['producto_id'],
+            'cantidad' => $prod['cantidad'],
+            'precio_unitario' => $prod['precio_unitario'],
+            'precio_especial' => $prod['precio_especial'] ?? null,
+            'subtotal' => $subtotalDetalle,
+        ]);
+    }
+
+    // Crear cuotas si existen
+    if ($request->has('cuotas') && is_array($request->cuotas)) {
+        foreach ($request->cuotas as $index => $cuota) {
+            CotizacionCuota::create([
+                'cotizacion_id' => $cotizacion->id,
+                'numero_cuota' => $index + 1,
+                'monto' => $cuota['monto'],
+                'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+                'tipo' => $cuota['tipo'] ?? 'cuota',
+            ]);
+        }
+    }
+
+    DB::commit();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Cotización creada exitosamente',
+        'data' => $cotizacion->load(['cliente', 'detalles', 'cuotas'])
+    ], 201);
+}
+```
+</CodeGroup>
+
+## Cálculo de Totales
+
+<Info>
+**Importante sobre Precios**
+
+Los precios ingresados en `precio_unitario` y `precio_especial` ya **incluyen IGV**. El sistema calcula:
+
+- `montoBruto` = suma de (precio × cantidad) de todos los productos
+- `total` = montoBruto - descuento
+- Si `aplicar_igv = true`:
+  - `subtotal` = total / 1.18 (base imponible)
+  - `igv` = total - subtotal
+- Si `aplicar_igv = false`:
+  - `subtotal` = total
+  - `igv` = 0
+</Info>
+
+### Precio Especial
+
+Cada producto puede tener un `precio_especial` que sobrescribe el `precio_unitario`:
+
+<CodeGroup>
+```php CotizacionController.php:143-147
+foreach ($request->productos as $prod) {
+    $precio = $prod['precio_especial'] ?? $prod['precio_unitario'];
+    $montoBruto += $precio * $prod['cantidad'];
+}
+```
+</CodeGroup>
+
+## Actualizar Cotización
+
+Permite modificar una cotización existente, eliminando y recreando detalles y cuotas.
+
+<CodeGroup>
+```php CotizacionController.php:236-390
+public function update(Request $request, $id)
+{
+    $cotizacion = Cotizacion::where('id_empresa', $user->id_empresa)
+        ->findOrFail($id);
+
+    // Validación similar a store...
+
+    DB::beginTransaction();
+
+    // Calcular nuevos totales...
+
+    $cotizacion->update([
+        'fecha' => $request->fecha,
+        'id_cliente' => $idCliente,
+        'cliente_nombre' => $clienteNombre,
+        'subtotal' => $subtotal,
+        'igv' => $igv,
+        'total' => $total,
+        'descuento' => $descuento,
+        'aplicar_igv' => $request->aplicar_igv,
+        'estado' => $request->estado ?? $cotizacion->estado,
+    ]);
+
+    // Eliminar detalles y cuotas anteriores
+    $cotizacion->detalles()->delete();
+    $cotizacion->cuotas()->delete();
+
+    // Crear nuevos detalles y cuotas...
+
+    DB::commit();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Cotización actualizada exitosamente',
+        'data' => $cotizacion->load(['cliente', 'detalles', 'cuotas'])
+    ]);
+}
+```
+</CodeGroup>
+
+## Gestión de Estado
+
+### Cambiar Estado
+
+<CodeGroup>
+```php CotizacionController.php:418-448
+public function cambiarEstado(Request $request, $id)
+{
+    $validator = Validator::make($request->all(), [
+        'estado' => 'required|in:pendiente,aprobada,rechazada,vencida',
+    ]);
+
+    $cotizacion = Cotizacion::where('id_empresa', $user->id_empresa)
+        ->findOrFail($id);
+    $cotizacion->update(['estado' => $request->estado]);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Estado actualizado exitosamente',
+        'data' => $cotizacion
+    ]);
+}
+```
+</CodeGroup>
+
+### Estados Disponibles
+
+<CardGroup cols={2}>
+  <Card title="Pendiente" icon="clock">
+    Cotización creada, esperando aprobación del cliente
+  </Card>
+  <Card title="Aprobada" icon="check">
+    Cliente aprobó la cotización (se convirtió en venta)
+  </Card>
+  <Card title="Rechazada" icon="xmark">
+    Cliente rechazó o se eliminó la cotización
+  </Card>
+  <Card title="Vencida" icon="calendar-xmark">
+    Cotización expiró sin respuesta
+  </Card>
+</CardGroup>
+
+## Cuotas de Pago
+
+Las cotizaciones pueden incluir un plan de pagos en cuotas.
+
+<CodeGroup>
+```php CotizacionController.php:200-211
+if ($request->has('cuotas') && is_array($request->cuotas)) {
+    foreach ($request->cuotas as $index => $cuota) {
+        CotizacionCuota::create([
+            'cotizacion_id' => $cotizacion->id,
+            'numero_cuota' => $index + 1,
+            'monto' => $cuota['monto'],
+            'fecha_vencimiento' => $cuota['fecha_vencimiento'],
+            'tipo' => $cuota['tipo'] ?? 'cuota',
+        ]);
+    }
+}
+```
+</CodeGroup>
+
+### Tipos de Cuota
+
+- `inicial`: Pago inicial o adelanto
+- `cuota`: Cuota regular del plan de pagos
+
+## Eliminar Cotización
+
+Realiza un soft delete cambiando el estado a "rechazada".
+
+<CodeGroup>
+```php CotizacionController.php:395-413
+public function destroy(Request $request, $id)
+{
+    try {
+        $user = $request->user();
+        $cotizacion = Cotizacion::where('id_empresa', $user->id_empresa)
+            ->findOrFail($id);
+        $cotizacion->update(['estado' => 'rechazada']);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Cotización eliminada exitosamente'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al eliminar cotización: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+## Próximo Número
+
+<CodeGroup>
+```php CotizacionController.php:453-475
+public function proximoNumero(Request $request)
+{
+    try {
+        $user = $request->user();
+
+        $ultimaCotizacion = Cotizacion::where('id_empresa', $user->id_empresa)
+            ->orderBy('numero', 'desc')
+            ->first();
+
+        $proximoNumero = $ultimaCotizacion ? $ultimaCotizacion->numero + 1 : 1;
+
+        return response()->json([
+            'success' => true,
+            'numero' => 'COT-' . str_pad($proximoNumero, 6, '0', STR_PAD_LEFT)
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener próximo número: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Note>
+El formato de número es `COT-000001`, con 6 dígitos con ceros a la izquierda.
+</Note>
+
+## Modelo de Datos
+
+### Cotizacion Model
+
+<CodeGroup>
+```php Cotizacion.php:8-40
+protected $table = 'cotizaciones';
+
+protected $fillable = [
+    'numero',
+    'fecha',
+    'id_cliente',
+    'cliente_nombre',
+    'direccion',
+    'subtotal',
+    'igv',
+    'total',
+    'descuento',
+    'aplicar_igv',
+    'moneda',
+    'tipo_cambio',
+    'dias_pago',
+    'asunto',
+    'observaciones',
+    'estado',
+    'id_empresa',
+    'id_usuario',
+];
+
+protected $casts = [
+    'fecha' => 'date',
+    'subtotal' => 'decimal:2',
+    'igv' => 'decimal:2',
+    'total' => 'decimal:2',
+    'descuento' => 'decimal:2',
+    'tipo_cambio' => 'decimal:4',
+    'aplicar_igv' => 'boolean',
+];
+```
+</CodeGroup>
+
+### Relaciones
+
+<CodeGroup>
+```php Cotizacion.php:42-83
+public function cliente()
+{
+    return $this->belongsTo(Cliente::class, 'id_cliente', 'id_cliente');
+}
+
+public function usuario()
+{
+    return $this->belongsTo(User::class, 'id_usuario');
+}
+
+public function ventas()
+{
+    return $this->hasMany(Venta::class, 'cotizacion_id', 'id');
+}
+
+public function detalles()
+{
+    return $this->hasMany(CotizacionDetalle::class, 'cotizacion_id');
+}
+
+public function cuotas()
+{
+    return $this->hasMany(CotizacionCuota::class, 'cotizacion_id');
+}
+
+// Scopes
+public function scopePorEmpresa($query, $idEmpresa)
+{
+    return $query->where('id_empresa', $idEmpresa);
+}
+
+public function scopePendientes($query)
+{
+    return $query->where('estado', 'pendiente');
+}
+
+public function scopeAprobadas($query)
+{
+    return $query->where('estado', 'aprobada');
+}
+```
+</CodeGroup>
+
+## Conversión a Venta
+
+Cuando se crea una venta desde una cotización, esta se marca como aprobada:
+
+<CodeGroup>
+```php VentasController.php:281-286
+if (!empty($validated['cotizacion_id'])) {
+    Cotizacion::where('id', $validated['cotizacion_id'])
+        ->where('id_empresa', $user->id_empresa)
+        ->update(['estado' => 'aprobada']);
+}
+```
+</CodeGroup>
+
+<Info>
+Ver la documentación de [Facturación Electrónica](/features/invoicing) para más detalles sobre la creación de ventas desde cotizaciones.
+</Info>
+
+## Soporte Multi-Moneda
+
+<Tabs>
+  <Tab title="Soles (PEN)">
+    Moneda nacional peruana. No requiere tipo de cambio.
+  </Tab>
+  <Tab title="Dólares (USD)">
+    Moneda extranjera. Se puede especificar un `tipo_cambio` para referencia.
+  </Tab>
+</Tabs>
+
+<Note>
+El campo `tipo_cambio` es informativo y no afecta los cálculos. Todas las operaciones se realizan en la moneda seleccionada.
+</Note>

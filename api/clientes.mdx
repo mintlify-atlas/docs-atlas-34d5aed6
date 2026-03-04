@@ -1,0 +1,349 @@
+---
+title: 'Clientes'
+description: 'API para gestionar clientes'
+---
+
+## GET /api/clientes
+
+Lista todos los clientes de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `clientes.view`.
+
+### Parámetros de Consulta
+
+<ParamField query="search" type="string">
+  Término de búsqueda (busca en documento, nombre, email, teléfono)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de clientes
+  <Expandable title="Estructura">
+    <ResponseField name="id_cliente" type="integer">
+      ID único del cliente
+    </ResponseField>
+    <ResponseField name="documento" type="string">
+      DNI o RUC del cliente
+    </ResponseField>
+    <ResponseField name="datos" type="string">
+      Nombre o razón social
+    </ResponseField>
+    <ResponseField name="direccion" type="string">
+      Dirección principal
+    </ResponseField>
+    <ResponseField name="direccion2" type="string">
+      Dirección secundaria
+    </ResponseField>
+    <ResponseField name="telefono" type="string">
+      Teléfono principal
+    </ResponseField>
+    <ResponseField name="telefono2" type="string">
+      Teléfono secundario
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Correo electrónico
+    </ResponseField>
+    <ResponseField name="ubigeo" type="string">
+      Código ubigeo (6 dígitos)
+    </ResponseField>
+    <ResponseField name="departamento" type="string">
+      Departamento
+    </ResponseField>
+    <ResponseField name="provincia" type="string">
+      Provincia
+    </ResponseField>
+    <ResponseField name="distrito" type="string">
+      Distrito
+    </ResponseField>
+    <ResponseField name="ultima_venta" type="string">
+      Fecha de última venta
+    </ResponseField>
+    <ResponseField name="total_venta" type="number">
+      Total acumulado de ventas
+    </ResponseField>
+    <ResponseField name="empresa" type="object">
+      Datos básicos de la empresa
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/clientes?search=juan" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/clientes
+
+Crea un nuevo cliente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `clientes.create`.
+
+### Parámetros del Body
+
+<ParamField body="documento" type="string" required>
+  DNI o RUC del cliente (máximo 11 caracteres). Debe ser único por empresa.
+</ParamField>
+
+<ParamField body="datos" type="string" required>
+  Nombre o razón social (máximo 245 caracteres)
+</ParamField>
+
+<ParamField body="direccion" type="string">
+  Dirección principal (máximo 245 caracteres)
+</ParamField>
+
+<ParamField body="direccion2" type="string">
+  Dirección secundaria (máximo 220 caracteres)
+</ParamField>
+
+<ParamField body="telefono" type="string">
+  Teléfono principal (máximo 200 caracteres)
+</ParamField>
+
+<ParamField body="telefono2" type="string">
+  Teléfono secundario (máximo 200 caracteres)
+</ParamField>
+
+<ParamField body="email" type="string">
+  Correo electrónico (formato válido, máximo 200 caracteres)
+</ParamField>
+
+<ParamField body="id_empresa" type="integer" required>
+  ID de la empresa a la que pertenece el cliente
+</ParamField>
+
+<ParamField body="ubigeo" type="string">
+  Código ubigeo de 6 dígitos
+</ParamField>
+
+<ParamField body="departamento" type="string">
+  Nombre del departamento (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="provincia" type="string">
+  Nombre de la provincia (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="distrito" type="string">
+  Nombre del distrito (máximo 100 caracteres)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el cliente fue creado exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la creación
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cliente creado con sus relaciones
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/clientes" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documento": "12345678",
+    "datos": "Juan Pérez García",
+    "direccion": "Av. Principal 123",
+    "telefono": "987654321",
+    "email": "juan@ejemplo.com",
+    "id_empresa": 1,
+    "ubigeo": "150101",
+    "departamento": "Lima",
+    "provincia": "Lima",
+    "distrito": "Lima"
+  }'
+```
+
+---
+
+## GET /api/clientes/{id}
+
+Obtiene el detalle de un cliente específico.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `clientes.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del cliente
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cliente con sus relaciones (empresa, ventas)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/clientes/45" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## PUT /api/clientes/{id}
+
+Actualiza un cliente existente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `clientes.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del cliente
+</ParamField>
+
+### Parámetros del Body
+
+Los mismos que en POST (todos opcionales). El documento debe seguir siendo único por empresa.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la actualización fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la actualización
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cliente actualizado
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X PUT "https://api.ejemplo.com/api/clientes/45" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "telefono": "999888777",
+    "email": "nuevo@ejemplo.com"
+  }'
+```
+
+---
+
+## DELETE /api/clientes/{id}
+
+Elimina un cliente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `clientes.delete`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del cliente
+</ParamField>
+
+### Validación
+
+No se puede eliminar un cliente que tiene ventas asociadas. En ese caso, retorna error 409 (Conflict).
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la eliminación fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la eliminación o indicando el conflicto
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X DELETE "https://api.ejemplo.com/api/clientes/45" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/clientes/buscar-documento
+
+Busca un cliente por número de documento.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros del Body
+
+<ParamField body="documento" type="string" required>
+  Número de documento a buscar
+</ParamField>
+
+<ParamField body="empresa_id" type="integer" required>
+  ID de la empresa donde buscar
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si se encontró el cliente
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cliente encontrado (si existe)
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje indicando si no se encontró
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/clientes/buscar-documento" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documento": "12345678",
+    "empresa_id": 1
+  }'
+```
+
+---
+
+## Códigos de Error
+
+- **404 Not Found**: Cliente no encontrado.
+- **409 Conflict**: No se puede eliminar porque tiene ventas asociadas.
+- **422 Unprocessable Entity**: Error de validación (documento duplicado, email inválido, etc.).
+- **500 Internal Server Error**: Error en el servidor.
+
+## Notas Importantes
+
+- El **documento debe ser único** por empresa. No puede haber dos clientes con el mismo documento en la misma empresa.
+- Los clientes se crean automáticamente al registrar una venta si no existen.
+- Los campos `ultima_venta` y `total_venta` se calculan dinámicamente desde la tabla ventas.
+- Solo se pueden eliminar clientes sin ventas asociadas.
+- Todos los clientes están asociados a una empresa específica.

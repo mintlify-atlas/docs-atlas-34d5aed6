@@ -1,0 +1,252 @@
+---
+title: Instalación
+description: Guía completa para instalar el sistema de facturación electrónica con integración SUNAT
+---
+
+## Requisitos del Sistema
+
+Antes de comenzar con la instalación, asegúrate de tener los siguientes requisitos:
+
+### Requisitos de Software
+
+- **PHP**: 8.2 o superior
+- **Composer**: Gestor de dependencias de PHP
+- **Node.js**: 18.x o superior
+- **npm**: Gestor de paquetes de Node.js
+- **Base de datos**: SQLite (por defecto) o MySQL 8.0+
+- **Extensiones PHP requeridas**:
+  - OpenSSL
+  - PDO
+  - Mbstring
+  - Tokenizer
+  - XML
+  - Ctype
+  - JSON
+  - BCMath
+  - Fileinfo
+  - GD o Imagick (para generación de QR)
+
+### Requisitos de Hardware
+
+- **RAM**: Mínimo 2GB (4GB recomendado)
+- **Disco**: Mínimo 1GB de espacio libre
+- **CPU**: 2 cores o más recomendado
+
+## Instalación
+
+<Steps>
+
+### Clonar el Repositorio
+
+Clona el repositorio del proyecto en tu máquina local:
+
+```bash
+git clone [URL_DEL_REPOSITORIO]
+cd facturacion-electronica
+```
+
+### Instalar Dependencias Backend
+
+Instala las dependencias de PHP usando Composer:
+
+```bash
+composer install
+```
+
+Esto instalará todos los paquetes necesarios incluyendo:
+- Laravel Framework 12.x
+- Greenter (biblioteca para integración SUNAT)
+- Laravel Sanctum (autenticación API)
+- mPDF (generación de PDFs)
+- PhpSpreadsheet (exportación Excel)
+- Chillerlan QR Code (códigos QR para comprobantes)
+
+### Configurar Variables de Entorno
+
+Copia el archivo de ejemplo de configuración:
+
+```bash
+cp .env.example .env
+```
+
+Genera la clave de aplicación de Laravel:
+
+```bash
+php artisan key:generate
+```
+
+### Crear la Base de Datos
+
+**Para SQLite (configuración por defecto):**
+
+```bash
+touch database/database.sqlite
+```
+
+**Para MySQL:**
+
+Crea una base de datos vacía en tu servidor MySQL:
+
+```sql
+CREATE DATABASE facturacion_electronica CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+Luego actualiza tu archivo `.env` con las credenciales de MySQL (ver sección de Configuración).
+
+### Ejecutar Migraciones
+
+Ejecuta las migraciones para crear las tablas de la base de datos:
+
+```bash
+php artisan migrate --force
+```
+
+### Instalar Dependencias Frontend
+
+Instala las dependencias de Node.js:
+
+```bash
+npm install
+```
+
+Esto instalará:
+- React 19.x
+- Vite (bundler)
+- TailwindCSS 4.x
+- Radix UI (componentes)
+- TanStack Table (tablas de datos)
+- Zustand (gestión de estado)
+
+### Compilar Assets Frontend
+
+Compila los assets de React para producción:
+
+```bash
+npm run build
+```
+
+Para desarrollo, usa:
+
+```bash
+npm run dev
+```
+
+### Configurar Permisos de Almacenamiento
+
+Asegúrate de que Laravel tenga permisos de escritura en los directorios de almacenamiento:
+
+```bash
+chmod -R 775 storage bootstrap/cache
+```
+
+Crea los directorios necesarios para archivos SUNAT:
+
+```bash
+mkdir -p storage/app/sunat/xml
+mkdir -p storage/app/sunat/cdr
+mkdir -p storage/app/sunat/certificados
+```
+
+### Verificar la Instalación
+
+Inicia el servidor de desarrollo:
+
+```bash
+php artisan serve
+```
+
+Abre tu navegador en `http://localhost:8000` para verificar que la aplicación esté funcionando correctamente.
+
+</Steps>
+
+## Instalación Rápida con Composer
+
+Alternativamente, puedes usar el comando de configuración automatizada que ejecuta todos los pasos necesarios:
+
+```bash
+composer setup
+```
+
+Este comando ejecuta automáticamente:
+1. `composer install` - Instala dependencias PHP
+2. Copia `.env.example` a `.env` (si no existe)
+3. `php artisan key:generate` - Genera clave de aplicación
+4. `php artisan migrate --force` - Ejecuta migraciones
+5. `npm install` - Instala dependencias Node.js
+6. `npm run build` - Compila assets frontend
+
+## Modo Desarrollo
+
+Para iniciar el entorno completo de desarrollo (servidor Laravel + worker de colas + logs + Vite HMR):
+
+```bash
+composer dev
+```
+
+Este comando inicia automáticamente:
+- **Servidor Laravel** (`php artisan serve`) en `http://localhost:8000`
+- **Worker de colas** (`php artisan queue:listen`) para operaciones asíncronas SUNAT
+- **Monitor de logs** (`php artisan pail`) para visualización de logs en tiempo real
+- **Vite dev server** (`npm run dev`) para Hot Module Replacement
+
+<Note>
+El worker de colas es **requerido** para operaciones SUNAT asíncronas como Resumen Diario de Boletas y Comunicación de Baja.
+</Note>
+
+## Verificación de Requisitos
+
+Verifica que tu servidor cumple con todos los requisitos de Laravel:
+
+```bash
+php artisan about
+```
+
+Este comando mostrará información sobre tu entorno, incluyendo versiones de PHP, base de datos y extensiones instaladas.
+
+## Solución de Problemas Comunes
+
+### Error: "Class 'XMLWriter' not found"
+
+Instala la extensión XML de PHP:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install php8.2-xml
+
+# macOS (Homebrew)
+brew install php@8.2
+```
+
+### Error: "Failed to open stream: Permission denied"
+
+Verifica los permisos de los directorios de almacenamiento:
+
+```bash
+sudo chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+```
+
+### Error de Memoria en Composer
+
+Si encuentras errores de memoria durante `composer install`:
+
+```bash
+php -d memory_limit=-1 /usr/local/bin/composer install
+```
+
+### Node.js Version Mismatch
+
+Si tienes problemas con la versión de Node.js, considera usar nvm:
+
+```bash
+nvm install 20
+nvm use 20
+npm install
+```
+
+## Próximos Pasos
+
+Ahora que has instalado el sistema, continúa con:
+
+- [Configuración](/getting-started/configuration) - Configura variables de entorno y credenciales SUNAT
+- [Primeros Pasos](/getting-started/first-steps) - Crea tu primera empresa y emite tu primer comprobante

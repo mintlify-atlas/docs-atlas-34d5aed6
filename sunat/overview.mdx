@@ -1,0 +1,182 @@
+---
+title: 'Visión General de SUNAT'
+description: 'Introducción a la integración con SUNAT para facturación electrónica en Perú'
+---
+
+## ¿Qué es SUNAT?
+
+La **Superintendencia Nacional de Aduanas y de Administración Tributaria (SUNAT)** es el organismo técnico especializado del Perú encargado de la administración de tributos internos y de los derechos arancelarios.
+
+Desde 2014, SUNAT implementó el Sistema de Emisión Electrónica (SEE) que obliga a las empresas a emitir comprobantes de pago electrónicos en formato XML firmados digitalmente.
+
+## Facturación Electrónica en Perú
+
+El sistema de facturación electrónica peruano requiere:
+
+- **Generación de XML**: Los comprobantes se generan en formato XML siguiendo el estándar UBL 2.1
+- **Firma digital**: Cada documento debe estar firmado con un certificado digital
+- **Envío a SUNAT**: Los comprobantes se envían a SUNAT vía web services (SOAP o REST)
+- **Constancia de Recepción (CDR)**: SUNAT responde con un archivo CDR que confirma la aceptación
+
+### Tipos de Comprobantes Soportados
+
+Este sistema integra los siguientes documentos electrónicos:
+
+| Tipo | Código SUNAT | Descripción |
+|------|--------------|-------------|
+| Factura | 01 | Comprobante para ventas B2B |
+| Boleta | 03 | Comprobante para ventas B2C |
+| Nota de Crédito | 07 | Anulación o corrección de facturas/boletas |
+| Nota de Débito | 08 | Aumentos en el monto de facturas |
+| Guía de Remisión | 09 | Documento de traslado de mercancías |
+
+### Flujos de Envío
+
+SUNAT maneja diferentes flujos según el tipo de documento:
+
+#### Facturas, Notas de Crédito y Débito (Sincrónico)
+
+1. Generar XML firmado
+2. Enviar vía SOAP
+3. Recibir CDR inmediatamente
+4. Guardar respuesta
+
+#### Boletas (Asincrónico)
+
+1. Generar XML firmado
+2. Enviar en Resumen Diario (batch)
+3. Recibir ticket
+4. Consultar ticket para obtener CDR
+
+#### Guías de Remisión Electrónica - GRE (REST)
+
+1. Generar XML firmado
+2. Autenticación OAuth2 con SUNAT
+3. Enviar vía API REST (GRE)
+4. Recibir ticket
+5. Consultar ticket para obtener CDR
+
+## Enfoque de Integración
+
+Este sistema utiliza una arquitectura centralizada mediante el servicio `SunatService`:
+
+```php
+app/Services/SunatService.php  // 1200+ líneas
+```
+
+### Responsabilidades del Servicio
+
+- **Configuración**: Gestiona endpoints beta/producción y credenciales SOL
+- **Generación XML**: Construye objetos Greenter y genera XML UBL
+- **Firma digital**: Aplica certificados digitales a los documentos
+- **Envío**: Comunica con SUNAT vía SOAP (facturas) o REST (guías)
+- **Procesamiento CDR**: Recibe y almacena respuestas de SUNAT
+- **Gestión de tickets**: Maneja flujos asincrónicos para boletas y guías
+
+### Métodos Principales
+
+| Método | Descripción |
+|--------|-------------|
+| `generarXml()` | Genera XML firmado para facturas/boletas |
+| `enviarComprobante()` | Envía factura/boleta a SUNAT |
+| `generarNotaCreditoXml()` | Genera XML para notas de crédito |
+| `enviarNotaCredito()` | Envía nota de crédito |
+| `generarGuiaRemisionXml()` | Genera XML para guías |
+| `enviarGuiaRemision()` | Envía guía vía API GRE |
+| `consultarTicketGuia()` | Consulta estado de guía |
+| `resumenDiario()` | Envía boletas en lote |
+| `comunicacionBaja()` | Anula documentos |
+| `consultarTicket()` | Verifica estado de tickets |
+
+## Uso de la Librería Greenter
+
+[Greenter](https://github.com/thegreenter/greenter) es la librería PHP líder para facturación electrónica en Perú, desarrollada por la comunidad.
+
+### Instalación
+
+```bash
+composer require greenter/greenter
+composer require greenter/xml-parser
+composer require greenter/gre
+```
+
+### Características
+
+- **UBL 2.1 completo**: Implementa todos los tipos de documentos SUNAT
+- **Firma digital**: Integración con certificados X.509
+- **Validación**: Verifica estructura XML antes del envío
+- **Web Services**: Cliente SOAP y REST para SUNAT
+- **Actualizado**: Soporta GRE 2022 (nueva API de guías)
+
+### Ejemplo de Uso
+
+```php
+use Greenter\See;
+use Greenter\Model\Sale\Invoice;
+
+$see = new See();
+$see->setService('https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService');
+$see->setCertificate($certificadoPem);
+$see->setClaveSOL($ruc, $usuario, $clave);
+
+$invoice = new Invoice();
+$invoice->setUblVersion('2.1')
+    ->setTipoDoc('01')
+    ->setSerie('F001')
+    ->setCorrelativo('1');
+    // ... configurar más campos
+
+$xmlSigned = $see->getXmlSigned($invoice);
+$result = $see->send($invoice);
+
+if ($result->isSuccess()) {
+    $cdr = $result->getCdrResponse();
+    echo $cdr->getDescription();
+}
+```
+
+<Warning>
+Greenter requiere extensiones PHP: `openssl`, `soap`, `xml`, `dom`, `zip`. Verifique que estén habilitadas en su servidor.
+</Warning>
+
+## Estructura de Archivos
+
+Los documentos generados se almacenan en `storage/app/sunat/`:
+
+```
+storage/app/sunat/
+├── xml/{ruc}/               # XMLs firmados generados
+│   ├── 20612706702-01-F001-00000001.xml
+│   └── 20612706702-09-T001-00000001.xml
+├── cdr/{ruc}/               # CDRs recibidos de SUNAT
+│   ├── R-20612706702-01-F001-00000001.zip
+│   └── R-20612706702-09-T001-00000001.zip
+└── certificados/            # Certificados digitales
+    ├── cert.pem            # Certificado de prueba
+    └── 20612706702-cert.pem # Certificado por empresa
+```
+
+### Nomenclatura de Archivos
+
+**Formato XML**: `{RUC}-{TipoDoc}-{Serie}-{Numero}.xml`
+
+Ejemplo: `20612706702-01-F001-00000123.xml`
+- RUC: 20612706702
+- Tipo: 01 (Factura)
+- Serie: F001
+- Número: 00000123
+
+**Formato CDR**: `R-{RUC}-{TipoDoc}-{Serie}-{Numero}.zip`
+
+El archivo ZIP contiene el XML de respuesta de SUNAT.
+
+## Próximos Pasos
+
+<CardGroup cols={2}>
+  <Card title="Configuración" icon="gear" href="/sunat/setup">
+    Configurar credenciales SOL y endpoints
+  </Card>
+  <Card title="Certificados" icon="certificate" href="/sunat/certificates">
+    Gestionar certificados digitales
+  </Card>
+</CardGroup>

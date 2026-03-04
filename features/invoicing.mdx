@@ -1,0 +1,432 @@
+---
+title: 'Facturación Electrónica'
+description: 'Sistema de emisión de comprobantes electrónicos (facturas y boletas) con integración SUNAT'
+icon: 'file-invoice'
+---
+
+## Descripción General
+
+El módulo de facturación electrónica permite emitir, gestionar y enviar comprobantes de pago electrónicos a SUNAT cumpliendo con la normativa peruana de facturación electrónica.
+
+### Tipos de Comprobantes
+
+- **Facturas (01)**: Para clientes con RUC (11 dígitos)
+- **Boletas (03)**: Para clientes con DNI (8 dígitos)
+- **Notas de Venta (06)**: Documentos internos que no afectan stock
+
+## Funcionalidades Principales
+
+### Listar Ventas
+
+Obtiene todas las ventas de la empresa del usuario autenticado.
+
+<CodeGroup>
+```php VentasController.php:23-75
+public function index(Request $request): JsonResponse
+{
+    try {
+        $user = $request->user();
+
+        $ventas = Venta::with(['cliente', 'tipoDocumento', 'pagos'])
+            ->where('id_empresa', $user->id_empresa)
+            ->orderBy('fecha_emision', 'desc')
+            ->orderBy('numero', 'desc')
+            ->get()
+            ->map(function ($venta) {
+                $pago = $venta->pagos->first();
+                return [
+                    'id_venta' => $venta->id_venta,
+                    'serie' => $venta->serie,
+                    'numero' => $venta->numero,
+                    'fecha_emision' => $venta->fecha_emision?->format('Y-m-d'),
+                    'cliente' => [
+                        'documento' => $venta->cliente?->documento,
+                        'datos' => $venta->cliente?->datos,
+                    ],
+                    'total' => $venta->total,
+                    'estado' => $venta->estado,
+                    'estado_sunat' => $venta->estado_sunat,
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'ventas' => $ventas,
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Error al listar ventas: ' . $e->getMessage());
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al cargar las ventas',
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+### Crear Nueva Venta
+
+Crea una venta con validación de tipo de documento según el cliente.
+
+<CodeGroup>
+```php VentasController.php:80-318
+public function store(Request $request): JsonResponse
+{
+    $validated = $request->validate([
+        'id_tido' => 'required|integer|exists:documentos_sunat,id_tido',
+        'id_cliente' => 'nullable|integer|exists:clientes,id_cliente',
+        'cliente_documento' => 'required_without:id_cliente|string|max:11',
+        'cliente_datos' => 'required_without:id_cliente|string|max:250',
+        'fecha_emision' => 'required|date',
+        'serie' => 'required|string|max:4',
+        'numero' => 'required|integer',
+        'subtotal' => 'required|numeric|min:0',
+        'igv' => 'required|numeric|min:0',
+        'total' => 'required|numeric|min:0',
+        'tipo_moneda' => 'required|in:PEN,USD',
+        'productos' => 'required|array|min:1',
+        'productos.*.id_producto' => 'required|integer|exists:productos,id_producto',
+        'productos.*.cantidad' => 'required|integer|min:1',
+        'productos.*.precio_unitario' => 'required|numeric|min:0',
+    ]);
+
+    return DB::transaction(function () use ($validated, $user, $request) {
+        // Crear venta
+        $venta = Venta::create([
+            'id_tido' => $validated['id_tido'],
+            'id_cliente' => $idCliente,
+            'fecha_emision' => $validated['fecha_emision'],
+            'serie' => $validated['serie'],
+            'numero' => $proximoNumero,
+            'subtotal' => $validated['subtotal'],
+            'igv' => $validated['igv'],
+            'total' => $validated['total'],
+            'tipo_moneda' => $validated['tipo_moneda'],
+            'afecta_stock' => $validated['afecta_stock'] ?? true,
+            'estado' => '1',
+            'id_empresa' => $user->id_empresa,
+        ]);
+
+        // Crear productos de la venta y descontar stock
+        foreach ($validated['productos'] as $producto) {
+            ProductoVenta::create([
+                'id_venta' => $venta->id_venta,
+                'id_producto' => $producto['id_producto'],
+                'cantidad' => $producto['cantidad'],
+                'precio_unitario' => $producto['precio_unitario'],
+            ]);
+
+            if ($afectaStock) {
+                $productoModel = Producto::find($producto['id_producto']);
+                $productoModel->decrement('cantidad', $producto['cantidad']);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Venta creada exitosamente',
+        ], 201);
+    });
+}
+```
+</CodeGroup>
+
+<Warning>
+**Validación de Documentos**
+
+- Las **Facturas** (id_tido=2) requieren RUC (11 dígitos)
+- Las **Boletas** (id_tido=1) requieren DNI (8 dígitos)
+- No se puede emitir factura con DNI ni boleta con RUC
+</Warning>
+
+### Anular Venta
+
+Anula una venta y retorna el stock al almacén si afectó inventario.
+
+<CodeGroup>
+```php VentasController.php:355-428
+public function anular(Request $request, int $id): JsonResponse
+{
+    $validated = $request->validate([
+        'motivo_anulacion' => 'required|string|max:500',
+    ]);
+
+    return DB::transaction(function () use ($id, $validated, $user) {
+        $venta = Venta::with(['productosVentas.producto'])
+            ->where('id_empresa', $user->id_empresa)
+            ->where('estado', '1')
+            ->findOrFail($id);
+
+        $venta->update(['estado' => '2']);
+        
+        // Retornar stock si afectó inventario
+        if ($venta->afecta_stock) {
+            foreach ($venta->productosVentas as $detalle) {
+                $producto = $detalle->producto;
+                if ($producto) {
+                    $producto->increment('cantidad', $detalle->cantidad);
+
+                    MovimientoStock::create([
+                        'id_producto' => $producto->id_producto,
+                        'tipo_movimiento' => 'entrada',
+                        'cantidad' => $detalle->cantidad,
+                        'motivo' => 'Anulación de venta',
+                        'id_empresa' => $user->id_empresa,
+                    ]);
+                }
+            }
+        }
+
+        // Registrar anulación
+        DB::table('ventas_anuladas')->insert([
+            'id_venta' => $venta->id_venta,
+            'motivo_anulacion' => $validated['motivo_anulacion'],
+            'fecha_anulacion' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Venta anulada exitosamente',
+        ]);
+    });
+}
+```
+</CodeGroup>
+
+## Gestión de Stock
+
+### Control de Almacenes
+
+El sistema maneja dos almacenes:
+- **Almacén 1**: Stock virtual
+- **Almacén 2**: Stock real/físico
+
+### Descontar Stock del Almacén Real
+
+<CodeGroup>
+```php VentasController.php:482-544
+public function descontarStock(Request $request, int $id): JsonResponse
+{
+    return DB::transaction(function () use ($id, $user) {
+        $venta = Venta::with(['productosVentas'])
+            ->where('id_empresa', $user->id_empresa)
+            ->where('stock_real_descontado', false)
+            ->findOrFail($id);
+
+        foreach ($venta->productosVentas as $detalle) {
+            // Buscar producto en almacén 2
+            $productoAlmacen2 = Producto::where('id_empresa', $user->id_empresa)
+                ->where('almacen', '2')
+                ->where('codigo', function ($query) use ($detalle) {
+                    $query->select('codigo')
+                        ->from('productos')
+                        ->where('id_producto', $detalle->id_producto);
+                })
+                ->first();
+
+            if ($productoAlmacen2) {
+                $productoAlmacen2->decrement('cantidad', $detalle->cantidad);
+                
+                MovimientoStock::create([
+                    'id_producto' => $productoAlmacen2->id_producto,
+                    'tipo_movimiento' => 'salida',
+                    'cantidad' => $detalle->cantidad,
+                    'tipo_documento' => 'descuento_almacen',
+                    'motivo' => 'Descuento de almacén real por venta',
+                    'id_almacen' => 2,
+                ]);
+            }
+        }
+
+        $venta->update(['stock_real_descontado' => true]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Stock descontado del almacén real exitosamente',
+        ]);
+    });
+}
+```
+</CodeGroup>
+
+## Numeración Automática
+
+El sistema genera automáticamente el número correlativo de los comprobantes.
+
+<CodeGroup>
+```php VentasController.php:549-579
+public function proximoNumero(Request $request): JsonResponse
+{
+    $user = $request->user();
+    $serie = $request->input('serie', 'F001');
+
+    $ultimaVenta = Venta::where('id_empresa', $user->id_empresa)
+        ->where('serie', $serie)
+        ->max('numero') ?? 0;
+
+    // Consultar documentos_empresas como número base
+    $numeroBase = DB::table('documentos_empresas')
+        ->where('id_empresa', $user->id_empresa)
+        ->where('serie', $serie)
+        ->value('numero') ?? 0;
+
+    $proximoNumero = max($ultimaVenta, $numeroBase) + 1;
+
+    return response()->json([
+        'success' => true,
+        'numero' => $proximoNumero,
+        'numero_completo' => $serie . '-' . str_pad($proximoNumero, 6, '0', STR_PAD_LEFT),
+    ]);
+}
+```
+</CodeGroup>
+
+## Modelo de Datos
+
+### Venta Model
+
+<CodeGroup>
+```php Venta.php:14-77
+protected $table = 'ventas';
+protected $primaryKey = 'id_venta';
+
+protected $fillable = [
+    'id_tido',
+    'id_tipo_pago',
+    'afecta_stock',
+    'fecha_emision',
+    'serie',
+    'numero',
+    'id_cliente',
+    'total',
+    'subtotal',
+    'igv',
+    'tipo_moneda',
+    'estado',
+    'estado_sunat',
+    'nombre_xml',
+    'cdr_url',
+    'id_empresa',
+    'cotizacion_id',
+    'nota_venta_id',
+    'stock_real_descontado',
+];
+
+protected $casts = [
+    'fecha_emision' => 'date',
+    'total' => 'decimal:2',
+    'afecta_stock' => 'boolean',
+    'stock_real_descontado' => 'boolean',
+];
+```
+</CodeGroup>
+
+### Relaciones
+
+<CodeGroup>
+```php Venta.php:80-144
+public function cliente(): BelongsTo
+{
+    return $this->belongsTo(Cliente::class, 'id_cliente', 'id_cliente');
+}
+
+public function empresa(): BelongsTo
+{
+    return $this->belongsTo(Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+public function tipoDocumento(): BelongsTo
+{
+    return $this->belongsTo(DocumentoSunat::class, 'id_tido', 'id_tido');
+}
+
+public function productosVentas(): HasMany
+{
+    return $this->hasMany(ProductoVenta::class, 'id_venta', 'id_venta');
+}
+
+public function pagos(): HasMany
+{
+    return $this->hasMany(VentaPago::class, 'id_venta', 'id_venta');
+}
+```
+</CodeGroup>
+
+## Estados de Venta
+
+<CardGroup cols={3}>
+  <Card title="Activa" icon="check">
+    Estado: `1`
+    
+    Venta activa y válida
+  </Card>
+  <Card title="Anulada" icon="xmark">
+    Estado: `2`
+    
+    Venta anulada por el usuario
+  </Card>
+  <Card title="Vendida" icon="cart-shopping">
+    Estado: `3`
+    
+    Nota de venta convertida a factura/boleta
+  </Card>
+</CardGroup>
+
+## Estados SUNAT
+
+<Steps>
+  <Step title="Pendiente de Envío">
+    `estado_sunat = 0`
+    
+    El comprobante no ha sido enviado a SUNAT
+  </Step>
+  <Step title="Aceptado por SUNAT">
+    `estado_sunat = 1`
+    
+    SUNAT aceptó el comprobante (CDR recibido)
+  </Step>
+  <Step title="Rechazado por SUNAT">
+    `estado_sunat = 2`
+    
+    SUNAT rechazó el comprobante
+  </Step>
+</Steps>
+
+## Integración con Cotizaciones
+
+Cuando se crea una venta desde una cotización:
+
+<CodeGroup>
+```php VentasController.php:281-286
+// Si viene de una cotización → cambiar su estado a 'aprobada'
+if (!empty($validated['cotizacion_id'])) {
+    Cotizacion::where('id', $validated['cotizacion_id'])
+        ->where('id_empresa', $user->id_empresa)
+        ->update(['estado' => 'aprobada']);
+}
+```
+</CodeGroup>
+
+<Info>
+La venta queda vinculada a la cotización mediante el campo `cotizacion_id`.
+</Info>
+
+## Notas de Venta
+
+Las notas de venta son documentos internos que luego pueden convertirse en facturas o boletas.
+
+<CodeGroup>
+```php VentasController.php:288-294
+// Si viene de una nota de venta → marcar como 'vendida' (estado 3)
+if (!empty($validated['nota_venta_id'])) {
+    Venta::where('id_venta', $validated['nota_venta_id'])
+        ->where('id_empresa', $user->id_empresa)
+        ->where('id_tido', 6) // Solo notas de venta
+        ->update(['estado' => '3']);
+}
+```
+</CodeGroup>
+
+<Note>
+Las notas de venta (`id_tido = 6`) **no afectan el stock** por defecto hasta que se conviertan en un comprobante válido.
+</Note>

@@ -1,0 +1,385 @@
+---
+title: 'Notas de Crédito'
+description: 'API para gestionar notas de crédito electrónicas'
+---
+
+## GET /api/notas-credito
+
+Lista todas las notas de crédito de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Consulta
+
+No requiere parámetros. Los resultados están paginados (15 por página).
+
+### Respuesta
+
+<ResponseField name="data" type="array">
+  Lista paginada de notas de crédito
+  <Expandable title="Estructura">
+    <ResponseField name="id" type="integer">
+      ID único de la nota de crédito
+    </ResponseField>
+    <ResponseField name="id_venta" type="integer">
+      ID de la venta afectada
+    </ResponseField>
+    <ResponseField name="serie" type="string">
+      Serie de la nota (FC01 para facturas, BC01 para boletas)
+    </ResponseField>
+    <ResponseField name="numero" type="integer">
+      Número correlativo
+    </ResponseField>
+    <ResponseField name="tipo_doc_afectado" type="string">
+      Código SUNAT del documento afectado (01: Factura, 03: Boleta)
+    </ResponseField>
+    <ResponseField name="serie_num_afectado" type="string">
+      Serie y número del comprobante afectado (ej: F001-123)
+    </ResponseField>
+    <ResponseField name="descripcion_motivo" type="string">
+      Descripción del motivo de la nota de crédito
+    </ResponseField>
+    <ResponseField name="monto_subtotal" type="number">
+      Base imponible
+    </ResponseField>
+    <ResponseField name="monto_igv" type="number">
+      Monto del IGV
+    </ResponseField>
+    <ResponseField name="monto_total" type="number">
+      Total de la nota de crédito
+    </ResponseField>
+    <ResponseField name="moneda" type="string">
+      Moneda (PEN o USD)
+    </ResponseField>
+    <ResponseField name="fecha_emision" type="string">
+      Fecha de emisión
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Estado: pendiente, enviado, aceptado, rechazado
+    </ResponseField>
+    <ResponseField name="venta" type="object">
+      Datos de la venta afectada con cliente
+    </ResponseField>
+    <ResponseField name="motivo" type="object">
+      Datos del motivo SUNAT
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/notas-credito
+
+Crea una nueva nota de crédito para anular o corregir una venta.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros del Body
+
+<ParamField body="id_venta" type="integer" required>
+  ID de la venta a la que se le aplicará la nota de crédito
+</ParamField>
+
+<ParamField body="motivo_id" type="integer" required>
+  ID del motivo SUNAT. Use el endpoint `/api/notas-credito/motivos` para obtener la lista.
+</ParamField>
+
+<ParamField body="descripcion_motivo" type="string">
+  Descripción personalizada del motivo (máximo 255 caracteres). Si no se envía, se usa la descripción del motivo SUNAT.
+</ParamField>
+
+### Proceso Automático
+
+Al crear la nota de crédito, el sistema automáticamente:
+
+1. Determina la serie según el tipo de documento afectado:
+   - **FC01**: Para facturas (01)
+   - **BC01**: Para boletas (03)
+
+2. Obtiene el próximo número correlativo desde `documentos_empresas`
+
+3. Copia los montos de la venta (subtotal, IGV, total, moneda)
+
+4. Genera el archivo XML firmado de la nota de crédito
+
+5. Sincroniza el número en `documentos_empresas`
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la nota fue creada exitosamente
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Objeto completo de la nota de crédito creada con sus relaciones
+</ResponseField>
+
+<ResponseField name="xml" type="object">
+  Información sobre la generación del XML
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/notas-credito" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_venta": 123,
+    "motivo_id": 1,
+    "descripcion_motivo": "Anulación por error en el monto"
+  }'
+```
+
+---
+
+## GET /api/notas-credito/{id}
+
+Obtiene el detalle completo de una nota de crédito.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la nota de crédito
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Objeto completo de la nota de crédito con venta, cliente, productos y motivo
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito/45" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/notas-credito/{id}/enviar
+
+Envía la nota de crédito a SUNAT para su validación.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la nota de crédito
+</ParamField>
+
+### Requisitos
+
+- La nota de crédito debe tener el XML generado (`nombre_xml` no puede ser null)
+- La empresa debe tener certificado digital configurado
+- Las credenciales SOL de SUNAT deben estar configuradas
+
+### Proceso de Envío
+
+1. Lee el XML firmado desde `storage/app/sunat/xml/{ruc}/`
+2. Envía el documento a SUNAT vía SOAP (sincrónico)
+3. Recibe y procesa el CDR (Constancia de Recepción)
+4. Guarda el CDR en `storage/app/sunat/cdr/{ruc}/`
+5. Actualiza el estado de la nota según la respuesta de SUNAT
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el envío fue exitoso
+</ResponseField>
+
+<ResponseField name="codigo_sunat" type="string">
+  Código de respuesta de SUNAT
+</ResponseField>
+
+<ResponseField name="mensaje_sunat" type="string">
+  Mensaje de respuesta de SUNAT
+</ResponseField>
+
+<ResponseField name="cdr_url" type="string">
+  Ruta del archivo CDR
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/notas-credito/45/enviar" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/notas-credito/{id}/cdr
+
+Descarga el archivo CDR (Constancia de Recepción) de SUNAT en formato ZIP.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la nota de crédito
+</ParamField>
+
+### Respuesta
+
+Descarga directa del archivo ZIP con el CDR.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito/45/cdr" \
+  -H "Authorization: Bearer {token}" \
+  -o cdr.zip
+```
+
+---
+
+## GET /api/notas-credito/xml/{nombre}
+
+Descarga el archivo XML de la nota de crédito.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="nombre" type="string" required>
+  Nombre del archivo XML (con o sin extensión .xml)
+</ParamField>
+
+### Respuesta
+
+Archivo XML con Content-Type: application/xml.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito/xml/20612706702-07-FC01-000001" \
+  -H "Authorization: Bearer {token}" \
+  -o nota-credito.xml
+```
+
+---
+
+## GET /api/notas-credito/buscar-venta
+
+Busca una venta por serie y número para crear una nota de crédito.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Consulta
+
+<ParamField query="serie" type="string" required>
+  Serie del comprobante (ej: F001, B001)
+</ParamField>
+
+<ParamField query="numero" type="string" required>
+  Número del comprobante
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si se encontró la venta
+</ResponseField>
+
+<ResponseField name="venta" type="object">
+  Objeto completo de la venta con cliente, tipo de documento y productos
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito/buscar-venta?serie=F001&numero=123" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/notas-credito/motivos
+
+Obtiene la lista de motivos válidos para notas de crédito según catálogo SUNAT.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de motivos de nota de crédito
+  <Expandable title="Estructura">
+    <ResponseField name="id" type="integer">
+      ID del motivo
+    </ResponseField>
+    <ResponseField name="codigo" type="string">
+      Código SUNAT del motivo
+    </ResponseField>
+    <ResponseField name="descripcion" type="string">
+      Descripción del motivo
+    </ResponseField>
+    <ResponseField name="tipo" type="string">
+      Tipo: NC (Nota de Crédito)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Motivos Comunes SUNAT
+
+- **01**: Anulación de la operación
+- **02**: Anulación por error en el RUC
+- **03**: Corrección por error en la descripción
+- **04**: Descuento global
+- **05**: Descuento por ítem
+- **06**: Devolución total
+- **07**: Devolución por ítem
+- **08**: Bonificación
+- **09**: Disminución en el valor
+- **13**: Ajustes afectos al IVAP
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/notas-credito/motivos" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## Códigos de Error
+
+- **404 Not Found**: Nota de crédito o venta no encontrada.
+- **422 Unprocessable Entity**: Error de validación o XML no generado.
+- **500 Internal Server Error**: Error en el servidor o al comunicarse con SUNAT.
+
+## Notas Importantes
+
+- Las notas de crédito se crean automáticamente con los montos de la venta original.
+- La serie se determina automáticamente según el tipo de documento: FC01 para facturas, BC01 para boletas.
+- El envío a SUNAT es sincrónico: la respuesta (CDR) se obtiene inmediatamente.
+- Solo se pueden crear notas de crédito para ventas activas de la empresa del usuario.

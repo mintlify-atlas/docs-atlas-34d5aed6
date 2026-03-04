@@ -1,0 +1,544 @@
+---
+title: 'Autorización'
+description: 'Sistema de permisos basado en roles con bypass para administradores'
+---
+
+## Descripción General
+
+El sistema implementa autorización basada en **permisos granulares** asociados a roles. Los permisos siguen el formato `recurso.accion` y se verifican mediante middleware en cada endpoint protegido.
+
+## Envío de Tokens
+
+Todos los endpoints protegidos requieren el token de autenticación en el header `Authorization`.
+
+### Formato del Header
+
+```http
+Authorization: Bearer {token}
+```
+
+### Ejemplo de Petición
+
+<CodeGroup>
+```bash cURL
+curl -X GET https://api.example.com/api/productos \
+  -H "Authorization: Bearer 1|abcdefghijklmnopqrstuvwxyz1234567890" \
+  -H "Content-Type: application/json"
+```
+
+```javascript JavaScript (Fetch)
+fetch('https://api.example.com/api/productos', {
+  method: 'GET',
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+    'Content-Type': 'application/json'
+  }
+})
+.then(response => response.json())
+.then(data => console.log(data));
+```
+
+```javascript JavaScript (Axios)
+import axios from 'axios';
+
+const token = localStorage.getItem('auth_token');
+
+axios.get('https://api.example.com/api/productos', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+})
+.then(response => console.log(response.data));
+```
+</CodeGroup>
+
+<Warning>
+**Token en Query String**: Para descargas de PDFs y exportaciones que se abren en el navegador, el sistema también acepta el token como parámetro de query `?token=` mediante el middleware `TokenFromQuery`. Esto se aplica únicamente a rutas web específicas.
+
+```
+https://api.example.com/reporteNV/12345?token=1|abcdefghijklmnopqrstuvwxyz1234567890
+```
+</Warning>
+
+## Middleware de Permisos
+
+El middleware `CheckPermission` se aplica a rutas que requieren permisos específicos.
+
+### Definición en Rutas
+
+```php
+// En routes/api.php
+
+// Requiere permiso "productos.view"
+Route::get('productos', [ProductoController::class, 'index'])
+    ->middleware('permission:productos.view');
+
+// Requiere permiso "productos.create"
+Route::post('productos', [ProductoController::class, 'store'])
+    ->middleware('permission:productos.create');
+
+// Requiere permiso "ventas.edit"
+Route::put('ventas/{id}', [VentasController::class, 'update'])
+    ->middleware('permission:ventas.edit');
+```
+
+### Lógica del Middleware
+
+El middleware `CheckPermission` implementa la siguiente lógica:
+
+```php
+public function handle(Request $request, Closure $next, string $permission): Response
+{
+    $user = $request->user();
+
+    // 1. Verificar autenticación
+    if (!$user) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No autenticado'
+        ], 401);
+    }
+
+    // 2. Admin bypass - rol_id = 1 tiene acceso total
+    if ($user->rol_id == 1) {
+        return $next($request);
+    }
+
+    // 3. Verificar permiso específico del rol
+    if (!$user->hasPermission($permission)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No tienes permiso para realizar esta acción'
+        ], 403);
+    }
+
+    return $next($request);
+}
+```
+
+## Formato de Permisos
+
+Los permisos siguen la convención `recurso.accion`:
+
+### Estructura
+
+<ParamField body="recurso" type="string">
+  Nombre del recurso o módulo (productos, ventas, clientes, etc.)
+</ParamField>
+
+<ParamField body="accion" type="string">
+  Acción permitida sobre el recurso (view, create, edit, delete)
+</ParamField>
+
+### Permisos Comunes
+
+<ResponseField name="productos.view" type="permission">
+  Ver listado y detalles de productos
+</ResponseField>
+
+<ResponseField name="productos.create" type="permission">
+  Crear nuevos productos
+</ResponseField>
+
+<ResponseField name="productos.edit" type="permission">
+  Editar productos existentes
+</ResponseField>
+
+<ResponseField name="productos.delete" type="permission">
+  Eliminar productos
+</ResponseField>
+
+<ResponseField name="ventas.view" type="permission">
+  Ver listado y detalles de ventas
+</ResponseField>
+
+<ResponseField name="ventas.create" type="permission">
+  Crear nuevas ventas
+</ResponseField>
+
+<ResponseField name="ventas.edit" type="permission">
+  Editar ventas existentes
+</ResponseField>
+
+<ResponseField name="ventas.delete" type="permission">
+  Anular ventas
+</ResponseField>
+
+<ResponseField name="clientes.view" type="permission">
+  Ver listado y detalles de clientes
+</ResponseField>
+
+<ResponseField name="clientes.create" type="permission">
+  Crear nuevos clientes
+</ResponseField>
+
+<ResponseField name="clientes.edit" type="permission">
+  Editar clientes existentes
+</ResponseField>
+
+<ResponseField name="clientes.delete" type="permission">
+  Eliminar clientes
+</ResponseField>
+
+<ResponseField name="proveedores.view" type="permission">
+  Ver listado y detalles de proveedores
+</ResponseField>
+
+<ResponseField name="proveedores.create" type="permission">
+  Crear nuevos proveedores
+</ResponseField>
+
+<ResponseField name="proveedores.edit" type="permission">
+  Editar proveedores existentes
+</ResponseField>
+
+<ResponseField name="proveedores.delete" type="permission">
+  Eliminar proveedores
+</ResponseField>
+
+<ResponseField name="compras.view" type="permission">
+  Ver listado y detalles de compras
+</ResponseField>
+
+<ResponseField name="compras.create" type="permission">
+  Registrar nuevas compras
+</ResponseField>
+
+<ResponseField name="compras.edit" type="permission">
+  Editar compras existentes
+</ResponseField>
+
+<ResponseField name="compras.delete" type="permission">
+  Anular compras
+</ResponseField>
+
+<ResponseField name="cotizaciones.view" type="permission">
+  Ver listado y detalles de cotizaciones
+</ResponseField>
+
+<ResponseField name="cotizaciones.create" type="permission">
+  Crear nuevas cotizaciones
+</ResponseField>
+
+<ResponseField name="cotizaciones.edit" type="permission">
+  Editar cotizaciones existentes
+</ResponseField>
+
+<ResponseField name="cotizaciones.delete" type="permission">
+  Eliminar cotizaciones
+</ResponseField>
+
+## Acceso Basado en Roles
+
+Los permisos se asignan a **roles**, no directamente a usuarios.
+
+### Estructura de Roles
+
+Cada usuario tiene un `rol_id` que determina sus permisos:
+
+```json
+{
+  "user": {
+    "id": 15,
+    "name": "Juan Pérez",
+    "email": "juan@example.com",
+    "rol_id": 3,
+    "id_empresa": 5
+  }
+}
+```
+
+### Carga de Permisos en Login
+
+Durante el login, el sistema carga automáticamente los permisos del rol:
+
+```json
+{
+  "success": true,
+  "token": "1|abc123...",
+  "user": { ... },
+  "permissions": [
+    "productos.view",
+    "productos.create",
+    "ventas.view",
+    "ventas.create",
+    "clientes.view"
+  ]
+}
+```
+
+<Info>
+**Permisos del Cliente**: El frontend debe usar esta lista para mostrar/ocultar opciones de UI. Sin embargo, la autorización real siempre se valida en el servidor.
+</Info>
+
+## Bypass de Administrador
+
+Los usuarios con `rol_id = 1` tienen privilegios especiales:
+
+### Características del Rol Admin
+
+<ResponseField name="Acceso Total" type="feature">
+  Los administradores bypasean todas las verificaciones de permisos en el middleware `CheckPermission`.
+</ResponseField>
+
+<ResponseField name="Todos los Permisos" type="feature">
+  Durante el login, los administradores reciben automáticamente la lista completa de permisos disponibles en el sistema.
+</ResponseField>
+
+<ResponseField name="Multi-Empresa" type="feature">
+  Los administradores pueden ver y cambiar entre todas las empresas activas mediante el endpoint `/api/switch-empresa`.
+</ResponseField>
+
+<ResponseField name="Sin Restricciones" type="feature">
+  No requieren permisos explícitos asignados a su rol. El código verifica primero si `rol_id == 1` antes de consultar permisos.
+</ResponseField>
+
+### Ejemplo de Verificación
+
+```php
+// En AuthController::login()
+
+if ($user->rol_id == 1) {
+    // Admin: todas las empresas
+    $empresas = Empresa::where('estado', '1')->get();
+    
+    // Admin: todos los permisos
+    $permissions = Permission::pluck('name')->toArray();
+} else {
+    // Usuario normal: solo su empresa
+    $empresas = [$user->empresa];
+    
+    // Usuario normal: solo permisos de su rol
+    $permissions = $user->rol->permissions->pluck('name')->toArray();
+}
+```
+
+## Respuestas de Error
+
+### Error 401 - No Autenticado
+
+Cuando la petición no incluye un token válido:
+
+```json
+{
+  "success": false,
+  "message": "No autenticado"
+}
+```
+
+**Causas comunes:**
+- Token no incluido en el header `Authorization`
+- Token expirado (más de 8 horas)
+- Token revocado (después de logout)
+- Token con formato incorrecto
+
+### Error 403 - Sin Permisos
+
+Cuando el usuario no tiene el permiso requerido:
+
+```json
+{
+  "success": false,
+  "message": "No tienes permiso para realizar esta acción"
+}
+```
+
+**Causas comunes:**
+- El rol del usuario no tiene el permiso específico asignado
+- Se intenta acceder a un recurso de otra empresa (en sistemas multi-empresa)
+
+<CodeGroup>
+```bash Ejemplo - Petición sin permiso
+curl -X POST https://api.example.com/api/productos \
+  -H "Authorization: Bearer 1|validtoken123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "Producto Nuevo",
+    "precio": 100
+  }'
+
+# Respuesta: 403 Forbidden
+# El usuario tiene token válido pero su rol no incluye "productos.create"
+```
+
+```json Respuesta
+{
+  "success": false,
+  "message": "No tienes permiso para realizar esta acción"
+}
+```
+</CodeGroup>
+
+## Endpoints de Gestión de Permisos
+
+El sistema incluye endpoints para administrar permisos:
+
+### Listar Todos los Permisos
+
+```bash
+GET /api/permissions
+```
+
+Retorna todos los permisos disponibles en el sistema.
+
+### Obtener Permisos del Usuario Actual
+
+```bash
+GET /api/permissions/user
+```
+
+Retorna los permisos del usuario autenticado.
+
+### Obtener Permisos de un Rol
+
+```bash
+GET /api/permissions/role/{rolId}
+```
+
+Retorna los permisos asignados a un rol específico.
+
+### Actualizar Permisos de un Rol
+
+```bash
+PUT /api/permissions/role/{rolId}
+```
+
+Actualiza los permisos asignados a un rol.
+
+<CodeGroup>
+```bash Solicitud
+curl -X PUT https://api.example.com/api/permissions/role/3 \
+  -H "Authorization: Bearer 1|admintoken123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "permissions": [
+      "productos.view",
+      "productos.create",
+      "ventas.view",
+      "clientes.view"
+    ]
+  }'
+```
+
+```json Respuesta
+{
+  "success": true,
+  "message": "Permisos actualizados correctamente"
+}
+```
+</CodeGroup>
+
+<Warning>
+**Solo Administradores**: Los endpoints de gestión de permisos típicamente están restringidos a usuarios administradores.
+</Warning>
+
+## Buenas Prácticas
+
+### 1. Almacenamiento Seguro del Token
+
+```javascript
+// ✅ Correcto - localStorage
+localStorage.setItem('auth_token', token);
+
+// ❌ Evitar - variables globales
+window.authToken = token;
+```
+
+### 2. Interceptores de Axios
+
+Configura interceptores para incluir el token automáticamente:
+
+```javascript
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'https://api.example.com/api'
+});
+
+// Request interceptor - añade el token
+api.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => Promise.reject(error)
+);
+
+// Response interceptor - maneja errores 401
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Token expirado o inválido
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+```
+
+### 3. Verificación de Permisos en el Frontend
+
+```javascript
+// Verificar permiso antes de mostrar botón
+const permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
+const canCreateProducts = permissions.includes('productos.create');
+
+return (
+  <div>
+    {canCreateProducts && (
+      <button onClick={handleCreateProduct}>
+        Crear Producto
+      </button>
+    )}
+  </div>
+);
+```
+
+<Info>
+**Seguridad del Cliente**: La verificación de permisos en el frontend es solo para mejorar UX. La autorización real siempre ocurre en el servidor.
+</Info>
+
+### 4. Manejo de Sesión Expirada
+
+```javascript
+// Verificar token antes de peticiones críticas
+const checkTokenValidity = async () => {
+  try {
+    await api.get('/verify');
+    return true;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Token inválido - redirigir a login
+      localStorage.removeItem('auth_token');
+      window.location.href = '/login';
+      return false;
+    }
+  }
+};
+
+// Uso
+if (await checkTokenValidity()) {
+  // Continuar con la operación
+}
+```
+
+### 5. Refresh Automático de Token
+
+```javascript
+// Refrescar token cada 7 horas (antes de las 8 horas de expiración)
+setInterval(async () => {
+  try {
+    const response = await api.post('/refresh');
+    localStorage.setItem('auth_token', response.data.token);
+  } catch (error) {
+    console.error('Error al refrescar token:', error);
+  }
+}, 7 * 60 * 60 * 1000); // 7 horas en milisegundos
+```

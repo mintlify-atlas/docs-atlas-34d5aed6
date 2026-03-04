@@ -1,0 +1,489 @@
+---
+title: 'Reportes'
+description: 'Estadísticas del dashboard, reportes de ventas y exportaciones en PDF/Excel'
+icon: 'chart-line'
+---
+
+## Información General
+
+El sistema proporciona múltiples endpoints para generar reportes y estadísticas de ventas, permitiendo exportar datos en formatos PDF, Excel y TXT para presentación a SUNAT.
+
+Todos los reportes están filtrados automáticamente por la empresa activa del usuario autenticado.
+
+## Estadísticas del Dashboard
+
+<api-endpoint method="GET" path="/api/dashboard/stats" />
+
+Obtiene las estadísticas principales para mostrar en el dashboard del sistema.
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "stats": [
+    {
+      "id": 1,
+      "title": "Ventas del Mes",
+      "value": "S/ 45,320.50",
+      "change": "+12.5%",
+      "isPositive": true,
+      "icon": "DollarSign",
+      "bgColor": "bg-green-500"
+    },
+    {
+      "id": 2,
+      "title": "Documentos Emitidos",
+      "value": "128",
+      "change": "+8.3%",
+      "isPositive": true,
+      "icon": "FileText",
+      "bgColor": "bg-blue-600"
+    },
+    {
+      "id": 3,
+      "title": "Clientes Totales",
+      "value": "342",
+      "change": "+5.2%",
+      "isPositive": true,
+      "icon": "Users",
+      "bgColor": "bg-orange-500"
+    },
+    {
+      "id": 4,
+      "title": "Productos en Stock",
+      "value": "1,245",
+      "change": "12 stock bajo",
+      "isPositive": false,
+      "icon": "Package",
+      "bgColor": "bg-purple-500"
+    }
+  ],
+  "recentInvoices": [
+    {
+      "id": "F001-00001234",
+      "client": "EMPRESA ABC S.A.C.",
+      "amount": "S/ 1,250.00",
+      "date": "2024-03-04",
+      "status": "Aceptado"
+    },
+    {
+      "id": "B001-00005678",
+      "client": "Juan Pérez García",
+      "amount": "S/ 450.00",
+      "date": "2024-03-04",
+      "status": "Pendiente"
+    }
+  ],
+  "sunat": {
+    "pendientes": 5,
+    "ultima_conexion": "2024-03-04 10:30:00"
+  }
+}
+```
+
+### Descripción de Estadísticas
+
+<card-group cols="2">
+  <card title="Ventas del Mes">
+    Total de ventas en soles (PEN) del mes actual comparado con el mes anterior. Solo incluye ventas activas (no anuladas).
+  </card>
+  
+  <card title="Documentos Emitidos">
+    Cantidad de documentos (facturas y boletas) emitidos en el mes actual vs. mes anterior.
+  </card>
+  
+  <card title="Clientes Totales">
+    Número total de clientes registrados en la empresa. El cambio muestra clientes nuevos este mes.
+  </card>
+  
+  <card title="Productos en Stock">
+    Total de productos con el indicador de productos con stock por debajo del mínimo.
+  </card>
+</card-group>
+
+## Exportación TXT para SUNAT
+
+<api-endpoint method="GET" path="/api/ventas/exportar-txt" />
+
+Genera un archivo TXT en formato PLE 14.1 (Registro de Ventas e Ingresos) para presentar a SUNAT.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" default="mes actual">
+  Mes a exportar (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" default="año actual">
+  Año a exportar (YYYY)
+</param-field>
+
+### Ejemplo de Solicitud
+
+```bash
+GET /api/ventas/exportar-txt?mes=2&anio=2024
+```
+
+### Formato del Archivo
+
+El archivo generado sigue el formato PLE SUNAT con 35 campos separados por pipe (`|`):
+
+```
+20240200|M000000001|M-1|01/02/2024||01|F001|00000123||6|20612706702|EMPRESA ABC SAC|0.00|1000.00|0.00|180.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|0.00|1180.00|PEN|||||||||1|
+```
+
+### Nombre del Archivo
+
+```
+LE{RUC}{PERIODO}140100{INDICADOR}111.TXT
+```
+
+Ejemplo: `LE20612706702202402001401001111.TXT`
+
+<info>
+  El indicador es `1` si hay registros o `0` si no hay datos para el periodo.
+</info>
+
+## Exportación a Excel
+
+<api-endpoint method="GET" path="/api/ventas/exportar-excel" />
+
+Exporta el registro de ventas en formato Excel con formato y estilos.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" default="mes actual">
+  Mes a exportar (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" default="año actual">
+  Año a exportar (YYYY)
+</param-field>
+
+### Ejemplo de Solicitud
+
+```bash
+GET /api/ventas/exportar-excel?mes=3&anio=2024
+```
+
+### Contenido del Excel
+
+- **Título**: "REGISTRO DE VENTAS - {Mes} {Año}"
+- **Fecha de generación**
+- **Columnas**: Documento, Fecha, Cliente, RUC/DNI, Subtotal, IGV, Total, Moneda, Estado, SUNAT
+- **Filas alternadas** con colores para mejor lectura
+- **Total general** al final
+- **Formato numérico** con decimales
+
+### Nombre del Archivo
+
+```
+ventas-{anio}-{mes}.xlsx
+```
+
+Ejemplo: `ventas-2024-03.xlsx`
+
+## Reporte RVTA (Registro de Ventas SUNAT)
+
+<api-endpoint method="GET" path="/api/ventas/reporte-rvta" />
+
+Genera un reporte Excel en formato detallado según los estándares de SUNAT para el Registro de Ventas.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" required>
+  Mes del reporte (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" required>
+  Año del reporte (YYYY)
+</param-field>
+
+### Características
+
+- Incluye CUO (Código Único de Operación)
+- Tipo de documento cliente según tabla 2 SUNAT
+- Campos para base imponible, IGV, exonerado, inafecto
+- Totales por columna
+- Formato según PLE 14.1
+
+### Columnas del Reporte
+
+| Columna | Descripción |
+|---------|-------------|
+| CUO | Código Único de Operación |
+| Fecha Emisión | Fecha del comprobante |
+| Tipo Doc | Código SUNAT (01=Factura, 03=Boleta) |
+| Serie | Serie del documento |
+| Número | Número correlativo |
+| Tipo Doc Cliente | 1=DNI, 6=RUC, 0=Otros |
+| Nro Doc Cliente | Documento del cliente |
+| Razón Social | Nombre/razón social |
+| Base Imponible | Monto gravado |
+| IGV | IGV calculado (18%) |
+| Exonerado | Ventas exoneradas |
+| Inafecto | Ventas inafectas |
+| Total | Importe total |
+| Moneda | PEN/USD |
+| Estado | VIGENTE/ANULADO |
+
+## Reporte de Ventas por Producto
+
+<api-endpoint method="GET" path="/api/ventas/reporte-producto" />
+
+Genera un reporte Excel agrupado por producto con totales de cantidad y montos vendidos.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" required>
+  Mes del reporte (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" required>
+  Año del reporte (YYYY)
+</param-field>
+
+### Datos Incluidos
+
+- Código del producto
+- Nombre/descripción
+- Unidad de medida
+- Cantidad total vendida
+- Número de ventas que incluyen el producto
+- Subtotal, IGV y Total
+- Ordenado por monto total descendente
+
+### Ejemplo de Uso
+
+```javascript
+const url = `/api/ventas/reporte-producto?mes=3&anio=2024&token=${authToken}`;
+window.open(url, '_blank');
+```
+
+<tip>
+  Este reporte es útil para análisis de productos más vendidos y planificación de inventario.
+</tip>
+
+## Reporte de Ganancias
+
+<api-endpoint method="GET" path="/api/ventas/reporte-ganancias" />
+
+Genera un reporte Excel detallado con el análisis de ganancias por producto vendido.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" required>
+  Mes del reporte (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" required>
+  Año del reporte (YYYY)
+</param-field>
+
+### Cálculo de Ganancia
+
+```
+Ganancia = Total Venta - (Costo Unitario × Cantidad)
+```
+
+### Columnas del Reporte
+
+- Documento (tipo y número)
+- Fecha de venta
+- Cliente
+- Producto
+- Cantidad
+- Precio de venta unitario
+- Costo unitario
+- Total de la venta
+- Ganancia (con color verde/rojo según sea positiva/negativa)
+
+### Totales Incluidos
+
+- Total de ventas
+- Costo total
+- Ganancia total
+- Porcentaje de margen
+
+### Nombre del Archivo
+
+```
+ganancias-{anio}-{mes}.xlsx
+```
+
+## Exportación a PDF
+
+<api-endpoint method="GET" path="/api/ventas/exportar-pdf" />
+
+Genera un reporte PDF de ventas en formato horizontal (landscape) usando mPDF.
+
+### Query Parameters
+
+<param-field query="mes" type="integer" required>
+  Mes del reporte (1-12)
+</param-field>
+
+<param-field query="anio" type="integer" required>
+  Año del reporte (YYYY)
+</param-field>
+
+<param-field query="token" type="string" required>
+  Token de autenticación (se pasa como query param para PDFs)
+</param-field>
+
+### Ejemplo de Uso
+
+```javascript
+// Abrir PDF en nueva ventana
+const token = localStorage.getItem('auth_token');
+const url = `/api/ventas/exportar-pdf?mes=3&anio=2024&token=${token}`;
+window.open(url, '_blank');
+```
+
+<warning>
+  Para reportes PDF, el token debe enviarse como query parameter debido a que el navegador abre el PDF directamente y no puede incluir headers de Authorization.
+</warning>
+
+### Características del PDF
+
+- Formato A4 horizontal
+- Logo de la empresa
+- Tabla con todas las ventas del periodo
+- Totales al final
+- Generado con mPDF
+
+## Autenticación en Reportes
+
+### Endpoints API (JSON)
+
+Usan autenticación Bearer estándar:
+
+```javascript
+fetch('/api/dashboard/stats', {
+  headers: {
+    'Authorization': `Bearer ${token}`
+  }
+});
+```
+
+### Endpoints de Descarga (PDF/Excel/TXT)
+
+Requieren el token como query parameter debido al middleware `TokenFromQuery`:
+
+```javascript
+const token = localStorage.getItem('auth_token');
+const url = `/api/ventas/exportar-pdf?mes=3&anio=2024&token=${token}`;
+window.open(url, '_blank');
+```
+
+## Filtros y Alcance
+
+<info>
+  Todos los reportes se generan automáticamente filtrados por:
+  - **Empresa activa** del usuario (`id_empresa`)
+  - **Periodo** especificado (mes/año)
+  - **Estado activo** (excluye documentos anulados en totales)
+</info>
+
+### Tipos de Documento Incluidos
+
+Los reportes principales incluyen:
+
+- **id_tido = 1**: Facturas (01)
+- **id_tido = 2**: Boletas (03)
+
+Otros documentos como Notas de Crédito y Débito tienen sus propios reportes específicos.
+
+## Estados de Documentos
+
+### Estado General (campo `estado`)
+
+| Valor | Descripción |
+|-------|-------------|
+| 1 | Activa |
+| 2 | Anulada |
+| A | Anulada |
+| 3 | Vendida |
+
+### Estado SUNAT (campo `estado_sunat`)
+
+| Valor | Descripción |
+|-------|-------------|
+| 0 | Pendiente de envío |
+| 1 | Enviado y aceptado |
+| 2 | Rechazado por SUNAT |
+
+## Monedas
+
+### Tipo de Moneda (campo `tipo_moneda`)
+
+- **PEN**: Soles peruanos (S/)
+- **USD**: Dólares americanos ($)
+
+### Conversión
+
+Cuando se requiere convertir montos, se usa el campo `tipo_cambio` almacenado en la venta.
+
+## Formatos Numéricos
+
+### En Excel
+
+```php
+// Formato con 2 decimales y separadores de miles
+$sheet->getStyle('E5:G100')->getNumberFormat()->setFormatCode('#,##0.00');
+```
+
+### En JSON
+
+```json
+{
+  "value": "S/ 45,320.50",
+  "raw_value": 45320.50
+}
+```
+
+## Cálculos Comunes
+
+### IGV (18%)
+
+```php
+$baseImponible = $total / 1.18;
+$igv = $baseImponible * 0.18;
+```
+
+### Cambio Porcentual
+
+```php
+$cambio = (($actual - $anterior) / $anterior) * 100;
+```
+
+### Margen de Ganancia
+
+```php
+$margen = ($ganancia / $totalVenta) * 100;
+```
+
+## Permisos Requeridos
+
+La mayoría de los endpoints de reportes requieren el permiso:
+
+```
+ventas.view
+```
+
+Ejemplo en `routes/api.php`:
+
+```php
+Route::get('ventas/exportar-excel', [VentaExportController::class, 'exportarExcel'])
+    ->middleware('permission:ventas.view');
+```
+
+## Almacenamiento Temporal
+
+Los archivos PDF generados con mPDF usan directorio temporal:
+
+```php
+'tempDir' => storage_path('app/mpdf')
+```
+
+Asegúrate de que este directorio tenga permisos de escritura.

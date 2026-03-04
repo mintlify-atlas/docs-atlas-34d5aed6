@@ -1,122 +1,139 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Sistema de Facturación Electrónica SUNAT",
+  "theme": "linden",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#040404",
+    "light": "#ef370f",
+    "dark": "#f79d72"
   },
-  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "https://media.brand.dev/69d705f4-5e9b-4d51-bd5f-4788b2d5c4d2.svg",
+    "dark": "https://media.brand.dev/69d705f4-5e9b-4d51-bd5f-4788b2d5c4d2.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Magus-Technologies/facturacion_ilidesava"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Magus-Technologies/facturacion_ilidesava"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentación",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Inicio",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "features"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Primeros Pasos",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "getting-started/installation",
+              "getting-started/configuration",
+              "getting-started/first-steps"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Características Principales",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "features/invoicing",
+              "features/credit-debit-notes",
+              "features/delivery-guides",
+              "features/quotations",
+              "features/inventory",
+              "features/clients-suppliers"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Gestión de Empresas",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/multi-company",
+              "guides/users-roles",
+              "guides/permissions"
+            ]
+          },
+          {
+            "group": "Reportes y Exportación",
+            "pages": [
+              "guides/pdf-reports",
+              "guides/excel-exports"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Integración SUNAT",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Configuración",
             "pages": [
-              "api-reference/introduction"
+              "sunat/overview",
+              "sunat/setup",
+              "sunat/certificates"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Tipos de Documentos",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "sunat/facturas-boletas",
+              "sunat/credit-debit-notes",
+              "sunat/delivery-guides",
+              "sunat/daily-summary",
+              "sunat/voiding"
+            ]
+          },
+          {
+            "group": "Pruebas y Producción",
+            "pages": [
+              "sunat/testing",
+              "sunat/production",
+              "sunat/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Autenticación",
+            "pages": [
+              "api/authentication",
+              "api/authorization"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/ventas",
+              "api/notas-credito",
+              "api/notas-debito",
+              "api/guias-remision",
+              "api/cotizaciones",
+              "api/productos",
+              "api/clientes",
+              "api/proveedores"
+            ]
+          },
+          {
+            "group": "Recursos",
+            "pages": [
+              "api/empresas",
+              "api/usuarios",
+              "api/reportes"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

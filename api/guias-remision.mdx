@@ -1,0 +1,586 @@
+---
+title: 'Guías de Remisión'
+description: 'API para gestionar guías de remisión electrónicas (GRE)'
+---
+
+## GET /api/guias-remision
+
+Lista todas las guías de remisión de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Consulta
+
+No requiere parámetros. Los resultados están paginados (15 por página).
+
+### Respuesta
+
+<ResponseField name="data" type="array">
+  Lista paginada de guías de remisión
+  <Expandable title="Estructura">
+    <ResponseField name="id" type="integer">
+      ID único de la guía
+    </ResponseField>
+    <ResponseField name="serie" type="string">
+      Serie de la guía (T001)
+    </ResponseField>
+    <ResponseField name="numero" type="integer">
+      Número correlativo
+    </ResponseField>
+    <ResponseField name="fecha_emision" type="string">
+      Fecha de emisión
+    </ResponseField>
+    <ResponseField name="fecha_traslado" type="string">
+      Fecha de inicio del traslado
+    </ResponseField>
+    <ResponseField name="destinatario_nombre" type="string">
+      Nombre del destinatario
+    </ResponseField>
+    <ResponseField name="destinatario_documento" type="string">
+      Documento del destinatario
+    </ResponseField>
+    <ResponseField name="motivo_traslado" type="string">
+      Código del motivo (01-18)
+    </ResponseField>
+    <ResponseField name="mod_transporte" type="string">
+      Modalidad: 01 (Público) o 02 (Privado)
+    </ResponseField>
+    <ResponseField name="peso_total" type="number">
+      Peso total en kg
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Estado: pendiente, enviado, aceptado, rechazado
+    </ResponseField>
+    <ResponseField name="ticket_sunat" type="string">
+      Ticket de SUNAT (para consultar estado)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/guias-remision
+
+Crea una nueva guía de remisión electrónica.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros del Body
+
+#### Datos Generales
+
+<ParamField body="id_venta" type="integer">
+  ID de la venta relacionada (opcional)
+</ParamField>
+
+<ParamField body="fecha_traslado" type="string" required>
+  Fecha de inicio del traslado (formato: YYYY-MM-DD)
+</ParamField>
+
+<ParamField body="motivo_traslado" type="string" required>
+  Código del motivo de traslado (01-18). Use `/api/guias-remision/motivos` para la lista.
+</ParamField>
+
+<ParamField body="descripcion_motivo" type="string">
+  Descripción adicional del motivo (máximo 255 caracteres)
+</ParamField>
+
+<ParamField body="mod_transporte" type="string" required>
+  Modalidad de transporte:
+  - **01**: Transporte público
+  - **02**: Transporte privado
+</ParamField>
+
+<ParamField body="peso_total" type="number" required>
+  Peso total de la carga en kg (mínimo 0.001)
+</ParamField>
+
+<ParamField body="und_peso_total" type="string">
+  Unidad de peso (default: KGM)
+</ParamField>
+
+<ParamField body="observaciones" type="string">
+  Observaciones adicionales
+</ParamField>
+
+#### Destinatario
+
+<ParamField body="destinatario_tipo_doc" type="string" required>
+  Tipo de documento: 1 (DNI) o 6 (RUC)
+</ParamField>
+
+<ParamField body="destinatario_documento" type="string" required>
+  Número de documento del destinatario
+</ParamField>
+
+<ParamField body="destinatario_nombre" type="string" required>
+  Nombre o razón social del destinatario
+</ParamField>
+
+<ParamField body="destinatario_direccion" type="string" required>
+  Dirección del destinatario (punto de llegada)
+</ParamField>
+
+<ParamField body="destinatario_ubigeo" type="string">
+  Código ubigeo del punto de llegada (6 dígitos)
+</ParamField>
+
+#### Puntos de Partida y Llegada
+
+<ParamField body="ubigeo_partida" type="string">
+  Ubigeo del punto de partida. Si no se envía, usa el ubigeo de la empresa.
+</ParamField>
+
+<ParamField body="dir_partida" type="string">
+  Dirección del punto de partida. Si no se envía, usa la dirección de la empresa.
+</ParamField>
+
+#### Transporte Público (mod_transporte = 01)
+
+<ParamField body="transportista_tipo_doc" type="string" required>
+  Tipo de documento del transportista
+</ParamField>
+
+<ParamField body="transportista_documento" type="string" required>
+  Documento del transportista
+</ParamField>
+
+<ParamField body="transportista_nombre" type="string" required>
+  Nombre o razón social del transportista
+</ParamField>
+
+<ParamField body="transportista_nro_mtc" type="string">
+  Número de registro MTC del transportista
+</ParamField>
+
+#### Transporte Privado (mod_transporte = 02)
+
+<ParamField body="vehiculo_m1l" type="boolean">
+  Indica si es vehículo categoría M1 o L (true = campos opcionales)
+</ParamField>
+
+<ParamField body="conductor_tipo_doc" type="string">
+  Tipo de documento del conductor (requerido si no es M1/L)
+</ParamField>
+
+<ParamField body="conductor_documento" type="string">
+  Documento del conductor (requerido si no es M1/L)
+</ParamField>
+
+<ParamField body="conductor_nombres" type="string">
+  Nombres del conductor (requerido si no es M1/L)
+</ParamField>
+
+<ParamField body="conductor_apellidos" type="string">
+  Apellidos del conductor (requerido si no es M1/L)
+</ParamField>
+
+<ParamField body="conductor_licencia" type="string">
+  Número de licencia de conducir (requerido si no es M1/L)
+</ParamField>
+
+<ParamField body="vehiculo_placa" type="string">
+  Placa del vehículo (requerido si no es M1/L)
+</ParamField>
+
+#### Detalles de la Carga
+
+<ParamField body="detalles" type="array" required>
+  Lista de bienes a transportar (mínimo 1)
+  <Expandable title="Estructura">
+    <ParamField body="descripcion" type="string" required>
+      Descripción del bien
+    </ParamField>
+    <ParamField body="cantidad" type="number" required>
+      Cantidad (mínimo 0.001)
+    </ParamField>
+    <ParamField body="unidad" type="string">
+      Código SUNAT de unidad (default: NIU)
+    </ParamField>
+    <ParamField body="codigo" type="string">
+      Código interno del producto
+    </ParamField>
+    <ParamField body="id_producto" type="integer">
+      ID del producto (opcional)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Proceso Automático
+
+Al crear la guía de remisión:
+
+1. Obtiene el próximo número correlativo para la serie T001
+2. Genera el archivo XML firmado
+3. Sincroniza el número en `documentos_empresas`
+4. Asigna la fecha de emisión automáticamente (hoy)
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la guía fue creada exitosamente
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Objeto completo de la guía de remisión creada
+</ResponseField>
+
+<ResponseField name="xml" type="object">
+  Información sobre la generación del XML
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/guias-remision" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "destinatario_tipo_doc": "6",
+    "destinatario_documento": "20612706702",
+    "destinatario_nombre": "EMPRESA DESTINO SAC",
+    "destinatario_direccion": "AV. EJEMPLO 456",
+    "destinatario_ubigeo": "150101",
+    "motivo_traslado": "01",
+    "mod_transporte": "02",
+    "fecha_traslado": "2024-01-20",
+    "peso_total": 50.5,
+    "vehiculo_m1l": true,
+    "detalles": [
+      {
+        "descripcion": "Laptops HP",
+        "cantidad": 10,
+        "unidad": "NIU",
+        "codigo": "LAP001"
+      }
+    ]
+  }'
+```
+
+---
+
+## GET /api/guias-remision/{id}
+
+Obtiene el detalle completo de una guía de remisión.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la guía de remisión
+</ParamField>
+
+### Respuesta
+
+Objeto completo de la guía con detalles, venta y empresa.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/78" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/guias-remision/{id}/enviar
+
+Envía la guía de remisión a SUNAT (GRE API - asincrónico).
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la guía de remisión
+</ParamField>
+
+### Requisitos
+
+- La guía debe tener el XML generado
+- La empresa debe tener:
+  - Certificado digital configurado
+  - Client ID y Client Secret de GRE configurados (`SUNAT_GRE_CLIENT_ID`, `SUNAT_GRE_CLIENT_SECRET`)
+
+### Proceso de Envío (Asincrónico)
+
+1. Obtiene token OAuth2 de SUNAT
+2. Envía el XML firmado al GRE API
+3. SUNAT devuelve un **ticket** (número de seguimiento)
+4. Guarda el ticket en la guía
+5. Estado queda en "enviado" hasta consultar el ticket
+
+**Nota**: A diferencia de facturas/boletas, las guías NO reciben CDR inmediatamente. Debe consultarse el ticket posteriormente.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el envío fue exitoso
+</ResponseField>
+
+<ResponseField name="ticket" type="string">
+  Número de ticket de SUNAT para consultar el estado
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/guias-remision/78/enviar" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/guias-remision/{id}/ticket
+
+Consulta el estado del ticket en SUNAT y obtiene el CDR.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la guía de remisión
+</ParamField>
+
+### Requisitos
+
+- La guía debe tener un ticket de SUNAT
+
+### Proceso
+
+1. Consulta el estado del ticket en SUNAT
+2. Si está aceptado: descarga el CDR y actualiza el estado a "aceptado"
+3. Si está rechazado: actualiza el estado a "rechazado" con el motivo
+4. Si está en proceso: devuelve estado "pendiente"
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la consulta fue exitosa
+</ResponseField>
+
+<ResponseField name="estado" type="string">
+  Estado actual: pendiente, aceptado, rechazado
+</ResponseField>
+
+<ResponseField name="codigo_sunat" type="string">
+  Código de respuesta de SUNAT (si está procesado)
+</ResponseField>
+
+<ResponseField name="mensaje_sunat" type="string">
+  Mensaje de SUNAT
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/78/ticket" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/guias-remision/{id}/cdr
+
+Descarga el archivo CDR de SUNAT.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la guía de remisión
+</ParamField>
+
+### Respuesta
+
+Descarga directa del archivo ZIP con el CDR.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/78/cdr" \
+  -H "Authorization: Bearer {token}" \
+  -o cdr-guia.zip
+```
+
+---
+
+## GET /api/guias-remision/xml/{nombre}
+
+Descarga el archivo XML de la guía.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Ruta
+
+<ParamField path="nombre" type="string" required>
+  Nombre del archivo XML
+</ParamField>
+
+### Respuesta
+
+Archivo XML con Content-Type: application/xml.
+
+---
+
+## GET /api/guias-remision/proximo-numero
+
+Obtiene el próximo número correlativo disponible.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="numero" type="integer">
+  Próximo número correlativo
+</ResponseField>
+
+<ResponseField name="numero_completo" type="string">
+  Número completo (ej: T001-00000042)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/proximo-numero" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/guias-remision/motivos
+
+Obtiene la lista de motivos de traslado según catálogo SUNAT.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+Lista de motivos activos ordenados por código.
+
+### Motivos Principales SUNAT
+
+- **01**: Venta
+- **02**: Compra
+- **03**: Venta sujeta a confirmación
+- **04**: Consignación
+- **05**: Devolución
+- **06**: Traslado entre establecimientos de la misma empresa
+- **07**: Traslado de bienes para transformación
+- **08**: Recojo de bienes
+- **09**: Traslado por emisor itinerante CP
+- **13**: Otros
+- **14**: Venta con entrega a terceros
+- **18**: Traslado de bienes para exportación
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/motivos" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/guias-remision/empresa
+
+Obtiene los datos de la empresa activa para autocompletar punto de partida.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="razon_social" type="string">
+    Razón social de la empresa
+  </ResponseField>
+  <ResponseField name="ruc" type="string">
+    RUC de la empresa
+  </ResponseField>
+  <ResponseField name="direccion" type="string">
+    Dirección de la empresa
+  </ResponseField>
+  <ResponseField name="ubigeo" type="string">
+    Código ubigeo
+  </ResponseField>
+  <ResponseField name="departamento" type="string">
+    Departamento
+  </ResponseField>
+  <ResponseField name="provincia" type="string">
+    Provincia
+  </ResponseField>
+  <ResponseField name="distrito" type="string">
+    Distrito
+  </ResponseField>
+</ResponseField>
+
+---
+
+## GET /api/guias-remision/ubigeos
+
+Busca códigos ubigeo por nombre o código.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Consulta
+
+<ParamField query="q" type="string">
+  Término de búsqueda (nombre o código ubigeo)
+</ParamField>
+
+### Respuesta
+
+Lista de hasta 20 ubigeos que coinciden con la búsqueda.
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/guias-remision/ubigeos?q=lima" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## Códigos de Error
+
+- **400 Bad Request**: La guía no tiene XML generado.
+- **404 Not Found**: Guía no encontrada o CDR no disponible.
+- **422 Unprocessable Entity**: Error de validación.
+- **500 Internal Server Error**: Error en el servidor o al comunicarse con SUNAT.
+
+## Notas Importantes
+
+- **Envío asincrónico**: A diferencia de facturas/boletas, las guías usan el API GRE que es asincrónico. Debe consultarse el ticket posteriormente.
+- **Serie fija**: Todas las guías usan la serie T001.
+- **Vehículos M1/L**: Si marca `vehiculo_m1l: true`, todos los campos del conductor y vehículo son opcionales.
+- **Transporte público vs privado**: Los campos requeridos varían según la modalidad.
+- La guía se puede crear sin estar vinculada a una venta (`id_venta` es opcional).

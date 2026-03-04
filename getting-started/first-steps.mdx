@@ -1,0 +1,493 @@
+---
+title: Primeros Pasos
+description: Guía para crear tu primera empresa, configurar usuarios y emitir tu primer comprobante electrónico
+---
+
+## Introducción
+
+Esta guía te ayudará a realizar las configuraciones iniciales y emitir tu primer comprobante electrónico en el sistema. Seguiremos un flujo lógico desde la creación de la empresa hasta la emisión de una factura.
+
+## Acceso al Sistema
+
+### Primera Vez
+
+Después de instalar el sistema, inicia el servidor de desarrollo:
+
+```bash
+composer dev
+```
+
+Este comando inicia:
+- Servidor Laravel en `http://localhost:8000`
+- Worker de colas (requerido para SUNAT)
+- Monitor de logs
+- Vite dev server
+
+Abre tu navegador en `http://localhost:8000`
+
+### Credenciales Iniciales
+
+El sistema crea automáticamente un usuario administrador durante la instalación. Si no existe, créalo manualmente con:
+
+```bash
+php artisan tinker
+```
+
+Luego ejecuta:
+
+```php
+$user = new App\Models\User();
+$user->name = 'Administrador';
+$user->email = 'admin@example.com';
+$user->password = bcrypt('password');
+$user->rol_id = 1; // Admin
+$user->save();
+```
+
+## Crear tu Primera Empresa
+
+El sistema es multi-empresa, lo que permite gestionar comprobantes de múltiples RUCs desde una sola instalación.
+
+<Steps>
+
+### Acceder al Módulo de Empresas
+
+1. Inicia sesión con tu usuario administrador
+2. En el menú lateral, selecciona **Configuración** > **Empresas**
+3. Haz clic en el botón **Nueva Empresa**
+
+### Completar Datos de la Empresa
+
+Llena el formulario con los datos de tu empresa:
+
+**Información Básica:**
+- **RUC**: Número de RUC de 11 dígitos (ej: 20612706702)
+- **Razón Social**: Nombre completo de la empresa
+- **Nombre Comercial**: Nombre comercial (opcional)
+- **Dirección**: Domicilio fiscal completo
+- **Ubigeo**: Código de ubigeo (6 dígitos)
+- **Teléfono**: Teléfono de contacto
+- **Correo**: Correo electrónico para envío de comprobantes
+
+**Configuración SUNAT:**
+- **Usuario SOL**: Usuario de Clave SOL
+- **Clave SOL**: Contraseña de Clave SOL
+- **Certificado Digital**: Sube el archivo .pem del certificado
+
+**Logo:**
+- Sube el logo de tu empresa (PNG, JPG - máx. 2MB)
+- Se mostrará en los comprobantes PDF
+
+### Ambiente de Pruebas
+
+Para empezar con pruebas, puedes usar las credenciales de SUNAT Beta:
+
+- **RUC**: 20000000001
+- **Usuario SOL**: MODDATOS
+- **Clave SOL**: moddatos
+- **Certificado**: Usa el certificado de prueba incluido
+
+<Warning>
+Estos datos solo funcionan en ambiente **beta**. Para producción necesitas tus credenciales reales.
+</Warning>
+
+### Activar la Empresa
+
+Después de crear la empresa:
+1. Aparecerá en la lista de empresas
+2. Haz clic en **Activar** para establecerla como empresa activa
+3. El sistema ahora operará con esta empresa
+
+</Steps>
+
+## Configurar Series de Comprobantes
+
+Cada tipo de comprobante requiere una serie configurada.
+
+<Steps>
+
+### Acceder a Series
+
+1. Ve a **Configuración** > **Series**
+2. Haz clic en **Nueva Serie**
+
+### Crear Series por Tipo de Documento
+
+Crea al menos estas series:
+
+**Facturas Electrónicas:**
+- **Tipo**: Factura (01)
+- **Serie**: F001
+- **Número Inicial**: 1
+- **Descripción**: Facturas Electrónicas
+
+**Boletas de Venta:**
+- **Tipo**: Boleta (03)
+- **Serie**: B001
+- **Número Inicial**: 1
+- **Descripción**: Boletas de Venta
+
+**Notas de Crédito:**
+- **Tipo**: Nota de Crédito (07)
+- **Serie**: FC01 (para facturas) o BC01 (para boletas)
+- **Número Inicial**: 1
+
+**Guías de Remisión:**
+- **Tipo**: Guía de Remisión (09)
+- **Serie**: T001
+- **Número Inicial**: 1
+
+<Note>
+Las series para facturas electrónicas deben empezar con **F**, **E** o números. Las boletas con **B**.
+</Note>
+
+</Steps>
+
+## Configurar Productos y Servicios
+
+Antes de emitir comprobantes, registra tus productos o servicios.
+
+<Steps>
+
+### Crear un Producto
+
+1. Ve a **Almacén** > **Productos**
+2. Haz clic en **Nuevo Producto**
+3. Completa el formulario:
+
+**Información Básica:**
+- **Código**: Código interno (ej: PROD001)
+- **Código SUNAT**: Código de catálogo SUNAT (opcional)
+- **Descripción**: Nombre del producto
+- **Unidad**: Unidad de medida (NIU=Unidad, ZZ=Servicio, etc.)
+- **Precio Unitario**: Precio sin IGV
+- **Moneda**: PEN (Soles) o USD (Dólares)
+
+**Inventario:**
+- **Tipo**: Producto (con inventario) o Servicio (sin inventario)
+- **Stock Actual**: Cantidad disponible
+- **Stock Mínimo**: Alerta de stock bajo
+
+**Impuestos:**
+- **Afecto a IGV**: Sí/No (la mayoría de productos están afectos)
+- **Tipo de IGV**: Gravado (10), Exonerado (20), Inafecto (30)
+
+### Crear un Servicio
+
+Para servicios, el proceso es similar pero:
+- Selecciona **Tipo**: Servicio
+- **Unidad**: ZZ (Servicio)
+- No requiere control de inventario
+
+</Steps>
+
+## Crear tu Primer Cliente
+
+Registra los datos del cliente que recibirá el comprobante.
+
+<Steps>
+
+### Agregar Cliente
+
+1. Ve a **Clientes** > **Nuevo Cliente**
+2. Completa los datos:
+
+**Para Personas Jurídicas (RUC):**
+- **Tipo de Documento**: RUC
+- **Número**: RUC de 11 dígitos
+- **Razón Social**: Nombre de la empresa
+- **Dirección**: Dirección completa
+
+**Para Personas Naturales (DNI):**
+- **Tipo de Documento**: DNI
+- **Número**: DNI de 8 dígitos
+- **Nombre**: Nombre completo
+- **Dirección**: Dirección completa
+
+**Datos de Contacto:**
+- **Correo**: Para envío automático del comprobante
+- **Teléfono**: Teléfono de contacto
+
+### Cliente Genérico
+
+Para ventas rápidas, puedes crear un cliente genérico:
+- **Tipo**: DNI
+- **Número**: 00000000
+- **Nombre**: Clientes Varios
+
+</Steps>
+
+## Emitir tu Primera Factura
+
+Ahora estás listo para emitir tu primer comprobante electrónico.
+
+<Steps>
+
+### Crear Nueva Venta
+
+1. Ve a **Ventas** > **Nueva Venta**
+2. Se abrirá el formulario de emisión
+
+### Seleccionar Tipo y Serie
+
+- **Tipo de Documento**: Factura Electrónica (01)
+- **Serie**: F001
+- **Número**: Se auto-genera
+- **Fecha de Emisión**: Fecha actual (o selecciona otra)
+
+### Seleccionar Cliente
+
+- Busca el cliente por RUC, DNI o nombre
+- O crea uno nuevo haciendo clic en el botón **+**
+
+### Agregar Productos/Servicios
+
+1. Haz clic en **Agregar Ítem**
+2. Busca el producto por código o descripción
+3. Ingresa la **Cantidad**
+4. El precio unitario se carga automáticamente (puedes modificarlo)
+5. Verifica el monto calculado con IGV
+6. Repite para agregar más ítems
+
+### Revisar Totales
+
+El sistema calcula automáticamente:
+- **Subtotal**: Suma de todos los ítems sin IGV
+- **IGV (18%)**: Impuesto calculado
+- **Total**: Monto final a cobrar
+
+### Configurar Forma de Pago
+
+Selecciona:
+- **Contado**: Pago inmediato
+- **Crédito**: Pago diferido (configura fecha de vencimiento)
+
+### Guardar y Enviar a SUNAT
+
+1. Haz clic en **Guardar y Enviar a SUNAT**
+2. El sistema:
+   - Genera el XML del comprobante
+   - Firma digitalmente con el certificado
+   - Envía a SUNAT vía SOAP
+   - Descarga el CDR (Constancia de Recepción)
+   - Actualiza el estado a **Aceptado** o **Rechazado**
+
+### Descargar PDF
+
+Una vez aceptado por SUNAT:
+1. Haz clic en el ícono de PDF en la lista de ventas
+2. Se genera un PDF con:
+   - Datos de la empresa y cliente
+   - Detalle de los ítems
+   - Código QR de validación
+   - Hash y firma digital
+
+</Steps>
+
+<Note>
+En ambiente **beta**, los comprobantes se envían al servidor de pruebas de SUNAT. En **producción**, se envían al servidor oficial.
+</Note>
+
+## Comprender el Dashboard
+
+El dashboard proporciona una vista general de tu operación.
+
+### Métricas Principales
+
+Al acceder al sistema verás:
+
+**Ventas del Mes:**
+- Total de ventas en soles
+- Comparación con el mes anterior
+- Gráfico de evolución diaria
+
+**Comprobantes Emitidos:**
+- Cantidad de facturas, boletas y notas
+- Estados: Aceptados, Rechazados, Pendientes
+- Tasa de aceptación
+
+**Productos con Stock Bajo:**
+- Listado de productos bajo el stock mínimo
+- Alerta para reposición
+
+**Actividad Reciente:**
+- Últimos comprobantes emitidos
+- Estados de envío a SUNAT
+- Acciones pendientes
+
+### Filtros de Fecha
+
+Puedes filtrar las métricas por:
+- Hoy
+- Esta semana
+- Este mes
+- Rango personalizado
+
+### Vista Multi-Empresa
+
+Si tienes múltiples empresas:
+1. El dashboard muestra datos de la **empresa activa**
+2. Cambia de empresa usando el selector en la barra superior
+3. Los datos se actualizan automáticamente
+
+## Operaciones Comunes
+
+### Emitir Boleta de Venta
+
+El proceso es igual a facturas, pero:
+- Selecciona **Boleta (03)** como tipo
+- Serie **B001**
+- Clientes pueden ser con DNI o sin documento
+- Requiere **Resumen Diario** para aceptación final de SUNAT
+
+### Crear Nota de Crédito
+
+Para anular o corregir una factura:
+
+<Steps>
+
+1. Ve a **Ventas** > busca la factura
+2. Haz clic en **Acciones** > **Nota de Crédito**
+3. Selecciona el **motivo**:
+   - Anulación de la operación
+   - Corrección de monto
+   - Descuento posterior
+   - Devolución total o parcial
+4. Completa los detalles
+5. Envía a SUNAT
+
+</Steps>
+
+### Generar Resumen Diario (Boletas)
+
+Las boletas requieren un resumen diario:
+
+<Steps>
+
+1. Ve a **Comprobantes** > **Resumen Diario**
+2. Selecciona la **fecha** de las boletas
+3. El sistema agrupa todas las boletas del día
+4. Haz clic en **Generar Resumen**
+5. Envía a SUNAT (proceso asíncrono)
+6. SUNAT responde con un ticket
+7. El worker consulta el ticket hasta obtener el CDR
+
+</Steps>
+
+<Warning>
+El **worker de colas debe estar ejecutándose** para que funcione el proceso de resumen diario.
+</Warning>
+
+### Emitir Guía de Remisión
+
+Para guías de remisión electrónicas:
+
+<Steps>
+
+1. Ve a **Comprobantes** > **Guías de Remisión**
+2. Crea nueva guía
+3. Completa:
+   - **Motivo de traslado**: Venta, compra, traslado, etc.
+   - **Punto de partida**: Dirección de origen
+   - **Punto de llegada**: Dirección de destino
+   - **Transportista**: Datos del transportista
+   - **Vehículo**: Placa y datos
+   - **Productos**: Ítems a trasladar
+4. Envía a SUNAT (API GRE - asíncrono)
+5. Obtén ticket y espera CDR
+
+</Steps>
+
+## Solución de Problemas
+
+### Comprobante Rechazado por SUNAT
+
+**Error**: "RUC del emisor no existe"
+- Verifica que el RUC esté correctamente registrado
+- En beta, usa el RUC de prueba: 20000000001
+
+**Error**: "Certificado digital inválido"
+- Verifica que el certificado esté en formato PEM
+- Comprueba que no haya expirado
+- En beta, usa el certificado de prueba
+
+**Error**: "Serie no autorizada"
+- Verifica que la serie esté configurada en SUNAT
+- En producción, autoriza la serie en SUNAT Operaciones en Línea
+
+### Worker de Colas No Funciona
+
+**Problema**: Resumen Diario o Guías quedan pendientes
+
+**Solución**:
+```bash
+# Verifica que el worker esté corriendo
+php artisan queue:work --tries=3
+
+# O usa el comando dev que lo incluye
+composer dev
+
+# Revisa los logs
+php artisan pail
+```
+
+### No se Genera PDF
+
+**Problema**: Error al descargar PDF
+
+**Solución**:
+```bash
+# Verifica permisos de storage
+chmod -R 775 storage
+
+# Limpia cache de vistas
+php artisan view:clear
+
+# Verifica que mPDF esté instalado
+composer show mpdf/mpdf
+```
+
+## Mejores Prácticas
+
+### Para Ambiente de Pruebas
+
+1. **Usa credenciales beta**: No uses datos reales en pruebas
+2. **Prueba todos los escenarios**: Facturas, boletas, notas, guías
+3. **Verifica estados**: Asegúrate que todos sean aceptados antes de producción
+4. **Revisa XMLs**: Valida la estructura de los XML generados
+
+### Para Ambiente de Producción
+
+1. **Backups regulares**: Configura backups automáticos de la base de datos
+2. **Monitorea el worker**: Usa supervisor o systemd para mantenerlo activo
+3. **Revisa logs**: Monitorea logs de errores diariamente
+4. **Valida certificados**: Renueva antes del vencimiento
+5. **Prueba recuperación**: Ten un plan de contingencia
+
+### Para Emisión de Comprobantes
+
+1. **Verifica datos del cliente**: RUC/DNI válidos
+2. **Valida precios**: Confirma que los precios incluyan/excluyan IGV correctamente
+3. **Usa series correctas**: F para facturas, B para boletas
+4. **Envía a tiempo**: Emite comprobantes el mismo día de la operación
+5. **Guarda CDRs**: Conserva todos los CDR recibidos de SUNAT
+
+## Próximos Pasos
+
+Ahora que has emitido tu primer comprobante, explora:
+
+- **Módulo de Compras**: Registra facturas de proveedores
+- **Reportes**: Genera reportes de ventas y registro de compras
+- **Usuarios y Permisos**: Configura roles y permisos
+- **API**: Integra el sistema con otras aplicaciones
+- **Exportaciones**: Exporta datos a Excel para análisis
+
+## Recursos Adicionales
+
+- **Documentación SUNAT**: [Portal de SUNAT](https://www.sunat.gob.pe)
+- **Greenter**: [Documentación de Greenter](https://greenter.dev)
+- **Soporte**: Contacta al administrador del sistema para asistencia
+
+<Note>
+Recuerda que en **producción** todos los comprobantes tienen validez legal y tributaria. Asegúrate de probar exhaustivamente en ambiente **beta** antes de pasar a producción.
+</Note>

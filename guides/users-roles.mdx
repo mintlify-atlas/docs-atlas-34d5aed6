@@ -1,0 +1,553 @@
+---
+title: 'Usuarios y Roles'
+description: 'Sistema de gestión de usuarios y roles en el sistema de facturación electrónica'
+---
+
+## Visión General
+
+El sistema implementa un modelo de control de acceso basado en roles (RBAC - Role-Based Access Control) que permite gestionar qué acciones puede realizar cada usuario en el sistema.
+
+## Modelos
+
+### Usuario (User)
+
+**Modelo**: `App\Models\User`
+
+**Ubicación**: `app/Models/User.php`
+
+**Tabla**: `users`
+
+**Campos principales**:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | integer | Identificador único del usuario (PK) |
+| `name` | string | Nombre de usuario (login) |
+| `email` | string | Correo electrónico |
+| `password` | string | Contraseña hasheada (bcrypt) |
+| `rol_id` | integer | ID del rol asignado (FK) |
+| `id_empresa` | integer | ID de la empresa asignada (FK) |
+| `num_doc` | string | Número de documento de identidad |
+| `nombres` | string | Nombres completos |
+| `apellidos` | string | Apellidos completos |
+| `telefono` | string | Teléfono de contacto |
+| `estado` | string | Estado del usuario |
+| `foto_perfil` | string | Ruta de la foto de perfil |
+
+**Relaciones**:
+
+```php
+// Relación con empresa
+public function empresa()
+{
+    return $this->belongsTo(\App\Models\Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+// Relación con rol
+public function rol()
+{
+    return $this->belongsTo(\App\Models\Rol::class, 'rol_id', 'rol_id');
+}
+```
+
+### Rol
+
+**Modelo**: `App\Models\Rol`
+
+**Ubicación**: `app/Models/Rol.php`
+
+**Tabla**: `roles`
+
+**Campos principales**:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `rol_id` | integer | Identificador único del rol (PK) |
+| `nombre` | string | Nombre del rol |
+| `ver_precios` | boolean | Permite ver precios de productos |
+| `puede_eliminar` | boolean | Permite eliminar registros |
+
+**Relaciones**:
+
+```php
+// Relación con usuarios
+public function usuarios()
+{
+    return $this->hasMany(User::class, 'rol_id', 'rol_id');
+}
+
+// Relación con permisos (muchos a muchos)
+public function permissions()
+{
+    return $this->belongsToMany(
+        Permission::class,
+        'role_permission',
+        'rol_id',
+        'permission_id'
+    );
+}
+```
+
+## Rol de Administrador
+
+El sistema reserva el `rol_id = 1` para el rol de **Administrador**, que tiene privilegios especiales:
+
+### Características Especiales
+
+- **Permisos ilimitados**: Acceso automático a todos los módulos y acciones
+- **Bypass de verificaciones**: No se evalúan permisos individuales
+- **Multi-empresa**: Puede acceder y cambiar entre todas las empresas activas
+- **Sin restricciones**: Todas las validaciones de permisos retornan `true`
+
+### Implementación del Bypass
+
+**En el modelo User** (`app/Models/User.php:77-111`):
+
+```php
+public function hasPermission($permissionName)
+{
+    // Admin (rol_id = 1) tiene todos los permisos
+    if ($this->rol_id == 1) {
+        return true;
+    }
+    
+    return $this->rol && $this->rol->hasPermission($permissionName);
+}
+
+public function hasAnyPermission(array $permissions)
+{
+    // Admin (rol_id = 1) tiene todos los permisos
+    if ($this->rol_id == 1) {
+        return true;
+    }
+    
+    return $this->rol && $this->rol->hasAnyPermission($permissions);
+}
+
+public function hasAllPermissions(array $permissions)
+{
+    // Admin (rol_id = 1) tiene todos los permisos
+    if ($this->rol_id == 1) {
+        return true;
+    }
+    
+    return $this->rol && $this->rol->hasAllPermissions($permissions);
+}
+
+public function getPermissions()
+{
+    // Admin (rol_id = 1) tiene todos los permisos
+    if ($this->rol_id == 1) {
+        return \App\Models\Permission::all();
+    }
+    
+    return $this->rol ? $this->rol->permissions : collect();
+}
+```
+
+**En el middleware CheckPermission** (`app/Http/Middleware/CheckPermission.php:29-32`):
+
+```php
+// Admin (rol_id = 1) tiene acceso a todo
+if ($user->rol_id == 1) {
+    return $next($request);
+}
+```
+
+**En AuthController al login** (`app/Http/Controllers/Api/AuthController.php:53-56`, `70-76`):
+
+```php
+// Admin: todas las empresas
+if ($user->rol_id == 1) {
+    $empresas = \App\Models\Empresa::where('estado', '1')
+        ->select('id_empresa', 'comercial', 'ruc', 'razon_social', 'logo', 'direccion')
+        ->get();
+}
+
+// Admin tiene todos los permisos automáticamente
+if ($user->rol_id == 1) {
+    $permissions = \App\Models\Permission::pluck('name')->toArray();
+}
+```
+
+## Métodos de Verificación de Permisos
+
+El modelo `User` proporciona varios métodos para verificar permisos:
+
+### hasPermission($permissionName)
+
+Verifica si el usuario tiene un permiso específico.
+
+```php
+if ($user->hasPermission('ventas.create')) {
+    // El usuario puede crear ventas
+}
+```
+
+**Retorna**: `boolean`
+
+### hasAnyPermission(array $permissions)
+
+Verifica si el usuario tiene al menos uno de los permisos especificados.
+
+```php
+if ($user->hasAnyPermission(['ventas.edit', 'ventas.delete'])) {
+    // El usuario puede editar O eliminar ventas
+}
+```
+
+**Retorna**: `boolean`
+
+### hasAllPermissions(array $permissions)
+
+Verifica si el usuario tiene todos los permisos especificados.
+
+```php
+if ($user->hasAllPermissions(['productos.view', 'productos.edit'])) {
+    // El usuario puede ver Y editar productos
+}
+```
+
+**Retorna**: `boolean`
+
+### getPermissions()
+
+Obtiene todos los permisos del usuario.
+
+```php
+$permissions = $user->getPermissions();
+foreach ($permissions as $permission) {
+    echo $permission->name; // ej: "ventas.create"
+}
+```
+
+**Retorna**: `Collection` de objetos `Permission`
+
+## Métodos del Modelo Rol
+
+El modelo `Rol` también implementa métodos similares:
+
+### hasPermission($permissionName)
+
+```php
+public function hasPermission($permissionName)
+{
+    return $this->permissions()->where('name', $permissionName)->exists();
+}
+```
+
+### hasAnyPermission(array $permissions)
+
+```php
+public function hasAnyPermission(array $permissions)
+{
+    return $this->permissions()->whereIn('name', $permissions)->exists();
+}
+```
+
+### hasAllPermissions(array $permissions)
+
+```php
+public function hasAllPermissions(array $permissions)
+{
+    return $this->permissions()->whereIn('name', $permissions)->count() === count($permissions);
+}
+```
+
+## Autenticación
+
+### Login
+
+**Endpoint**: `POST /api/auth/login`
+
+**Parámetros**:
+```json
+{
+  "user": "admin",      // email o name
+  "password": "secreto"
+}
+```
+
+**Proceso**:
+1. Busca el usuario por `email` o `name`
+2. Verifica la contraseña con bcrypt (`Hash::check`)
+3. Crea sesión de Laravel (para exportaciones web)
+4. Genera token Sanctum (válido 8 horas)
+5. Carga empresas disponibles según rol
+6. Carga permisos del usuario
+
+**Respuesta exitosa**:
+```json
+{
+  "success": true,
+  "message": "Login exitoso",
+  "token": "1|abcd1234...",
+  "user": {
+    "id": 5,
+    "name": "jperez",
+    "email": "jperez@example.com",
+    "rol_id": 2,
+    "id_empresa": 1
+  },
+  "empresas": [
+    {
+      "id_empresa": 1,
+      "comercial": "Mi Empresa SAC",
+      "ruc": "20612706702",
+      "razon_social": "MI EMPRESA SOCIEDAD ANONIMA CERRADA",
+      "logo": "logos/empresa1.png",
+      "direccion": "Av. Principal 123"
+    }
+  ],
+  "permissions": [
+    "ventas.view",
+    "ventas.create",
+    "productos.view",
+    "clientes.view",
+    "clientes.create"
+  ]
+}
+```
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:15-92`
+
+### Logout
+
+**Endpoint**: `POST /api/auth/logout`
+
+**Headers**: `Authorization: Bearer {token}`
+
+**Proceso**:
+1. Revoca el token actual de Sanctum
+2. Cierra la sesión de Laravel
+3. Invalida la sesión PHP
+4. Regenera el token CSRF
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:97-111`
+
+### Obtener Usuario Actual
+
+**Endpoint**: `GET /api/auth/me`
+
+**Headers**: `Authorization: Bearer {token}`
+
+**Respuesta**:
+```json
+{
+  "success": true,
+  "user": {
+    "id": 5,
+    "name": "jperez",
+    "email": "jperez@example.com",
+    "rol_id": 2,
+    "id_empresa": 1
+  },
+  "empresas": [...]
+}
+```
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:116-145`
+
+### Refrescar Token
+
+**Endpoint**: `POST /api/auth/refresh`
+
+**Headers**: `Authorization: Bearer {token}`
+
+**Proceso**:
+1. Revoca el token actual
+2. Genera un nuevo token con 8 horas de validez
+
+**Respuesta**:
+```json
+{
+  "success": true,
+  "token": "2|xyz9876..."
+}
+```
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:150-164`
+
+### Verificar Token
+
+**Endpoint**: `GET /api/auth/verify`
+
+**Headers**: `Authorization: Bearer {token}`
+
+**Respuesta**:
+```json
+{
+  "success": true,
+  "message": "Token válido",
+  "user": {
+    "id": 5,
+    "name": "jperez",
+    "email": "jperez@example.com",
+    "rol_id": 2,
+    "id_empresa": 1
+  }
+}
+```
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:209-222`
+
+## Tokens de Autenticación
+
+### Laravel Sanctum
+
+El sistema utiliza **Laravel Sanctum** para autenticación basada en tokens:
+
+- **Generación**: `$user->createToken('auth_token', ['*'], now()->addHours(8))`
+- **Expiración**: 8 horas desde la creación
+- **Almacenamiento cliente**: `localStorage` con clave `auth_token`
+- **Envío**: Header `Authorization: Bearer {token}`
+
+### Token en URLs (PDFs)
+
+Para descargas de PDF desde el navegador, el sistema acepta tokens en query string:
+
+**Ejemplo**: `/reporteNV/123?token={auth_token}`
+
+**Middleware**: `TokenFromQuery` (`app/Http/Middleware/TokenFromQuery.php`)
+
+**Funcionamiento**:
+1. Extrae el token del parámetro `?token=`
+2. Lo convierte en header `Authorization: Bearer`
+3. Permite que Sanctum autentique la solicitud
+
+## Propiedades de Rol
+
+### ver_precios
+
+**Tipo**: `boolean`
+
+**Propósito**: Controla si los usuarios con este rol pueden ver precios de productos.
+
+**Uso típico**:
+- `true`: Para vendedores, administradores, contadores
+- `false`: Para almaceneros que solo gestionan stock
+
+### puede_eliminar
+
+**Tipo**: `boolean`
+
+**Propósito**: Controla si los usuarios con este rol pueden eliminar registros.
+
+**Uso típico**:
+- `true`: Para administradores y supervisores
+- `false`: Para usuarios operativos estándar
+
+**Nota**: Esta propiedad es independiente del sistema de permisos granular. Se puede usar para lógica de negocio adicional.
+
+## Mejores Prácticas
+
+### Crear Usuario
+
+```php
+use Illuminate\Support\Facades\Hash;
+
+$user = User::create([
+    'name' => 'jperez',
+    'email' => 'jperez@example.com',
+    'password' => Hash::make('password123'),
+    'rol_id' => 2,
+    'id_empresa' => 1,
+    'nombres' => 'Juan',
+    'apellidos' => 'Pérez García',
+    'estado' => '1'
+]);
+```
+
+### Verificar Permisos en Controladores
+
+```php
+public function destroy(Request $request, $id)
+{
+    if (!$request->user()->hasPermission('ventas.delete')) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No tienes permiso para eliminar ventas'
+        ], 403);
+    }
+    
+    // Proceder con la eliminación
+}
+```
+
+### Verificar Permisos en Vistas (Blade)
+
+```php
+@if($user->hasPermission('ventas.create'))
+    <button>Crear Venta</button>
+@endif
+```
+
+### Obtener Usuarios de una Empresa
+
+```php
+$usuarios = User::where('id_empresa', $empresaId)
+    ->with('rol')
+    ->get();
+```
+
+### Filtrar Usuarios por Rol
+
+```php
+$vendedores = User::where('rol_id', 3)
+    ->where('estado', '1')
+    ->get();
+```
+
+## Consideraciones de Seguridad
+
+### Contraseñas
+
+- **Nunca** almacene contraseñas en texto plano
+- Use `Hash::make()` para hashear contraseñas
+- Use `Hash::check()` para verificar contraseñas
+- Laravel usa bcrypt automáticamente
+
+### Tokens
+
+- Los tokens expiran en 8 horas
+- Use `refresh` para renovar tokens cercanos a expiración
+- Revoque tokens al logout
+- No comparta tokens entre usuarios
+
+### Validación de Rol
+
+- **Nunca** confíe en `rol_id` del cliente
+- Siempre obtenga el usuario desde `$request->user()`
+- Verifique permisos en el backend, no solo en frontend
+
+### Protección de Rutas
+
+```php
+// Siempre use middleware auth
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ventas', [VentasController::class, 'index'])
+        ->middleware('permission:ventas.view');
+});
+```
+
+## Troubleshooting
+
+### Usuario no puede acceder aunque tiene el permiso
+
+1. Verificar que el rol tiene el permiso asignado en `role_permission`
+2. Verificar que `rol_id` del usuario es correcto
+3. Limpiar caché si existe
+4. Verificar que el permiso existe en la tabla `permissions`
+
+### Admin no puede cambiar de empresa
+
+1. Verificar que `rol_id = 1`
+2. Verificar que la empresa destino está activa (`estado = '1'`)
+3. Verificar que `id_empresa` existe en la tabla `empresas`
+
+### Token inválido o expirado
+
+1. Verificar que el token se envía en el header correcto
+2. Verificar que el token no ha expirado (8 horas)
+3. Usar endpoint `/auth/refresh` para renovar
+4. Si persiste, hacer logout y login nuevamente

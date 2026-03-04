@@ -1,0 +1,457 @@
+---
+title: 'Cotizaciones'
+description: 'API para gestionar cotizaciones de venta'
+---
+
+## GET /api/cotizaciones
+
+Lista todas las cotizaciones de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.view`.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de cotizaciones desde la vista `view_cotizaciones`
+  <Expandable title="Estructura">
+    <ResponseField name="id" type="integer">
+      ID único de la cotización
+    </ResponseField>
+    <ResponseField name="numero" type="integer">
+      Número correlativo
+    </ResponseField>
+    <ResponseField name="fecha" type="string">
+      Fecha de la cotización
+    </ResponseField>
+    <ResponseField name="cliente_nombre" type="string">
+      Nombre del cliente (de la tabla o texto libre)
+    </ResponseField>
+    <ResponseField name="subtotal" type="number">
+      Base imponible
+    </ResponseField>
+    <ResponseField name="igv" type="number">
+      Monto del IGV
+    </ResponseField>
+    <ResponseField name="total" type="number">
+      Total de la cotización
+    </ResponseField>
+    <ResponseField name="moneda" type="string">
+      Moneda: PEN o USD
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Estado: pendiente, aprobada, rechazada, vencida
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/cotizaciones" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/cotizaciones
+
+Crea una nueva cotización.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.create`.
+
+### Parámetros del Body
+
+#### Datos Generales
+
+<ParamField body="fecha" type="string" required>
+  Fecha de la cotización (formato: YYYY-MM-DD)
+</ParamField>
+
+<ParamField body="moneda" type="string" required>
+  Moneda: PEN o USD
+</ParamField>
+
+<ParamField body="tipo_cambio" type="number">
+  Tipo de cambio (si moneda es USD)
+</ParamField>
+
+<ParamField body="aplicar_igv" type="boolean" required>
+  Indica si se aplica IGV a los totales
+</ParamField>
+
+<ParamField body="descuento" type="number">
+  Descuento global (mínimo 0)
+</ParamField>
+
+<ParamField body="asunto" type="string">
+  Asunto de la cotización
+</ParamField>
+
+<ParamField body="observaciones" type="string">
+  Observaciones adicionales
+</ParamField>
+
+<ParamField body="dias_pago" type="string">
+  Días de pago acordados
+</ParamField>
+
+<ParamField body="direccion" type="string">
+  Dirección de entrega
+</ParamField>
+
+#### Datos del Cliente
+
+Puede elegir una de estas 3 opciones:
+
+**Opción 1: Cliente existente**
+
+<ParamField body="id_cliente" type="integer">
+  ID del cliente existente
+</ParamField>
+
+**Opción 2: Cliente por documento (se crea si no existe)**
+
+<ParamField body="cliente_documento" type="string">
+  Documento del cliente (DNI o RUC)
+</ParamField>
+
+<ParamField body="cliente_datos" type="string">
+  Nombre o razón social
+</ParamField>
+
+<ParamField body="cliente_direccion" type="string">
+  Dirección del cliente
+</ParamField>
+
+**Opción 3: Cliente libre (sin guardar)**
+
+<ParamField body="cliente_nombre" type="string">
+  Nombre del cliente (texto libre, no se guarda en la tabla clientes)
+</ParamField>
+
+#### Productos
+
+<ParamField body="productos" type="array" required>
+  Lista de productos (mínimo 1)
+  <Expandable title="Estructura">
+    <ParamField body="producto_id" type="integer" required>
+      ID del producto
+    </ParamField>
+    <ParamField body="codigo" type="string">
+      Código del producto
+    </ParamField>
+    <ParamField body="nombre" type="string" required>
+      Nombre del producto
+    </ParamField>
+    <ParamField body="descripcion" type="string">
+      Descripción adicional
+    </ParamField>
+    <ParamField body="cantidad" type="number" required>
+      Cantidad (mínimo 0.01)
+    </ParamField>
+    <ParamField body="precio_unitario" type="number" required>
+      Precio unitario normal
+    </ParamField>
+    <ParamField body="precio_especial" type="number">
+      Precio especial (si aplica). Si no se envía, usa precio_unitario.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+#### Cuotas de Pago (opcional)
+
+<ParamField body="cuotas" type="array">
+  Lista de cuotas de pago
+  <Expandable title="Estructura">
+    <ParamField body="monto" type="number" required>
+      Monto de la cuota
+    </ParamField>
+    <ParamField body="fecha_vencimiento" type="string" required>
+      Fecha de vencimiento (formato: YYYY-MM-DD)
+    </ParamField>
+    <ParamField body="tipo" type="string" required>
+      Tipo: inicial o cuota
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Cálculo de Totales
+
+Los precios incluyen IGV. El sistema calcula:
+
+1. `montoBruto = Σ(precio × cantidad)` de todos los productos
+2. `total = montoBruto - descuento`
+3. Si `aplicar_igv` es true:
+   - `subtotal = total / 1.18` (base imponible)
+   - `igv = total - subtotal`
+4. Si `aplicar_igv` es false:
+   - `subtotal = total`
+   - `igv = 0`
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la cotización fue creada exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje descriptivo
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Objeto completo de la cotización con cliente, detalles y cuotas
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/cotizaciones" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fecha": "2024-01-15",
+    "cliente_documento": "20612706702",
+    "cliente_datos": "EMPRESA EJEMPLO SAC",
+    "moneda": "PEN",
+    "aplicar_igv": true,
+    "descuento": 0,
+    "asunto": "Cotización laptops",
+    "dias_pago": "30 días",
+    "productos": [
+      {
+        "producto_id": 1,
+        "codigo": "LAP001",
+        "nombre": "Laptop HP",
+        "cantidad": 5,
+        "precio_unitario": 2500.00,
+        "precio_especial": 2300.00
+      }
+    ],
+    "cuotas": [
+      {
+        "tipo": "inicial",
+        "monto": 5000,
+        "fecha_vencimiento": "2024-01-20"
+      },
+      {
+        "tipo": "cuota",
+        "monto": 6500,
+        "fecha_vencimiento": "2024-02-20"
+      }
+    ]
+  }'
+```
+
+---
+
+## GET /api/cotizaciones/{id}
+
+Obtiene el detalle completo de una cotización.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la cotización
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Objeto completo de la cotización con cliente, usuario, detalles de productos y cuotas
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/cotizaciones/25" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## PUT /api/cotizaciones/{id}
+
+Actualiza una cotización existente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la cotización
+</ParamField>
+
+### Parámetros del Body
+
+Los mismos que en POST, más:
+
+<ParamField body="estado" type="string">
+  Estado: pendiente, aprobada, rechazada, vencida
+</ParamField>
+
+### Proceso
+
+1. Elimina todos los detalles y cuotas anteriores
+2. Crea nuevos detalles y cuotas con los datos enviados
+3. Recalcula totales
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la actualización fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje descriptivo
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cotización actualizada con sus relaciones
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X PUT "https://api.ejemplo.com/api/cotizaciones/25" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fecha": "2024-01-15",
+    "estado": "aprobada",
+    "moneda": "PEN",
+    "aplicar_igv": true,
+    "productos": [...]
+  }'
+```
+
+---
+
+## DELETE /api/cotizaciones/{id}
+
+Elimina (marca como rechazada) una cotización.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.delete`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la cotización
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la eliminación fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la eliminación
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X DELETE "https://api.ejemplo.com/api/cotizaciones/25" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/cotizaciones/{id}/estado
+
+Cambia el estado de una cotización.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `cotizaciones.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la cotización
+</ParamField>
+
+### Parámetros del Body
+
+<ParamField body="estado" type="string" required>
+  Nuevo estado: pendiente, aprobada, rechazada, vencida
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el cambio fue exitoso
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando el cambio
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Cotización actualizada
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/cotizaciones/25/estado" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"estado": "aprobada"}'
+```
+
+---
+
+## GET /api/cotizaciones/proximo-numero
+
+Obtiene el próximo número de cotización disponible.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="numero" type="string">
+  Próximo número con formato (ej: COT-000042)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/cotizaciones/proximo-numero" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## Códigos de Error
+
+- **404 Not Found**: Cotización no encontrada.
+- **422 Unprocessable Entity**: Error de validación.
+- **500 Internal Server Error**: Error en el servidor.
+
+## Notas Importantes
+
+- Las cotizaciones usan numeración correlativa automática por empresa.
+- Los precios de productos **incluyen IGV**. El sistema calcula subtotal e IGV automáticamente.
+- Si una cotización tiene `id_cliente`, al crear una venta se puede referenciar con `cotizacion_id` y su estado cambiará a "aprobada".
+- El cliente puede ser: existente (id_cliente), nuevo por documento (se crea), o texto libre (cliente_nombre).
+- Las cuotas son opcionales y permiten definir el plan de pagos.

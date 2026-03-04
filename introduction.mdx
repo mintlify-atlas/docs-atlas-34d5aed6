@@ -1,0 +1,112 @@
+---
+title: Introducción
+description: Sistema de facturación electrónica para Perú con integración directa a SUNAT
+---
+
+## Bienvenido al sistema de facturación electrónica
+
+Sistema completo de **facturación electrónica** para Perú, desarrollado con Laravel 12 y React 19, que se integra directamente con SUNAT (Superintendencia Nacional de Aduanas y de Administración Tributaria) para la emisión de comprobantes electrónicos válidos.
+
+<Note>
+Este sistema utiliza la biblioteca Greenter para la generación de XML y comunicación con los servicios web de SUNAT, garantizando el cumplimiento normativo peruano.
+</Note>
+
+## ¿Qué es este sistema?
+
+Una solución integral que permite a empresas peruanas gestionar su facturación electrónica de manera eficiente y conforme a la normativa de SUNAT. El sistema maneja todos los tipos de documentos electrónicos requeridos:
+
+- **Facturas electrónicas** (tipo 01)
+- **Boletas de venta** (tipo 03)
+- **Notas de crédito** (tipo 07)
+- **Notas de débito** (tipo 08)
+- **Guías de remisión electrónicas** (tipo 09)
+
+## Beneficios principales
+
+<CardGroup cols={2}>
+  <Card title="Integración directa con SUNAT" icon="link">
+    Envío automático de comprobantes mediante SOAP y REST (GRE). Recepción de CDR (Constancia de Recepción) en tiempo real.
+  </Card>
+  
+  <Card title="Multi-empresa" icon="building">
+    Gestiona múltiples empresas desde una sola instalación. Cada usuario puede trabajar con varias empresas y cambiar entre ellas fácilmente.
+  </Card>
+  
+  <Card title="Gestión de inventario" icon="boxes-stacked">
+    Control de stock por almacén con movimientos automáticos en compras y ventas. Ajustes, transferencias y reportes detallados.
+  </Card>
+  
+  <Card title="Reportes y exportaciones" icon="file-export">
+    Genera PDFs formato A4 y ticket. Exporta a Excel con formato SUNAT para libros electrónicos (PLE-VENTAS).
+  </Card>
+</CardGroup>
+
+## Arquitectura técnica
+
+El sistema utiliza una arquitectura moderna que combina:
+
+- **Backend:** Laravel 12 con API RESTful
+- **Frontend:** React 19 con Radix UI y Tailwind CSS
+- **Autenticación:** Laravel Sanctum con tokens Bearer
+- **Base de datos:** SQLite (desarrollo) / MySQL (producción)
+- **SUNAT:** Greenter para generación XML y firma digital
+
+<Warning>
+Este NO es un SPA típico. Las páginas son vistas Blade que montan componentes React mediante atributos `data-react-component`. La navegación entre páginas realiza cargas completas.
+</Warning>
+
+## Flujos de envío a SUNAT
+
+El sistema maneja diferentes protocolos según el tipo de documento:
+
+### Documentos síncronos (SOAP)
+
+- Facturas, boletas y notas se envían mediante SOAP
+- Respuesta inmediata con CDR
+- Las boletas requieren además Resumen Diario para aceptación
+
+```php
+// Envío síncrono en SunatService.php
+$see = $this->getSee($empresa);
+$result = $see->send($invoice);
+// CDR disponible inmediatamente
+```
+
+### Documentos asíncronos (REST)
+
+- Guías de remisión usan la API GRE (OAuth 2.0)
+- Retorna un ticket que debe consultarse posteriormente
+- Anulaciones mediante Comunicación de Baja
+
+```php
+// Envío asíncrono de guía
+$response = $api->enviar($cpeDoc);
+$ticket = $response['nroTicket'];
+// Luego consultar con consultarTicket()
+```
+
+## Características de seguridad
+
+- **Certificados digitales:** Firma XML con certificados .pem almacenados de forma segura
+- **Permisos granulares:** Sistema de roles y permisos por recurso (`ventas.create`, `productos.view`, etc.)
+- **Multi-tenant:** Aislamiento completo de datos por empresa mediante `id_empresa`
+- **Modo beta:** Entorno de pruebas SUNAT sin afectar producción
+
+<Info>
+El modo beta utiliza el RUC `20000000001` con credenciales `MODDATOS/moddatos` para pruebas sin riesgo.
+</Info>
+
+## Próximos pasos
+
+Para comenzar a usar el sistema:
+
+1. **[Instalación y configuración](/getting-started/installation)** - Configura tu entorno de desarrollo
+2. **[Características completas](/features)** - Explora todas las funcionalidades disponibles
+3. **[Configuración SUNAT](/sunat/setup)** - Conecta con los servicios de SUNAT
+4. **[API Reference](/api/authentication)** - Documentación completa de endpoints
+
+---
+
+<Card title="¿Listo para empezar?" icon="rocket" href="/getting-started/installation">
+  Configura tu primera empresa y emite tu primer comprobante electrónico en minutos.
+</Card>

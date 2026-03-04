@@ -1,0 +1,545 @@
+---
+title: 'Usuarios'
+description: 'Gestión de usuarios, roles y permisos del sistema'
+icon: 'users'
+---
+
+## Información General
+
+Los endpoints de usuarios permiten gestionar cuentas de usuario, asignar roles y configurar permisos para controlar el acceso a diferentes funcionalidades del sistema.
+
+Todos los usuarios están asociados a una empresa y tienen un rol que define sus permisos.
+
+## Listar Usuarios
+
+<api-endpoint method="GET" path="/api/users" />
+
+Obtiene la lista de todos los usuarios del sistema con sus relaciones de rol y empresa.
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "name": "Juan Pérez",
+      "email": "juan.perez@jvcsac.com",
+      "rol_id": 1,
+      "id_empresa": 1,
+      "created_at": "2024-01-15T10:30:00.000000Z",
+      "updated_at": "2024-03-01T14:20:00.000000Z",
+      "rol": {
+        "rol_id": 1,
+        "nombre": "Administrador"
+      },
+      "empresa": {
+        "id_empresa": 1,
+        "comercial": "J.V.C. SAC",
+        "ruc": "20612706702"
+      }
+    },
+    {
+      "id": 2,
+      "name": "María García",
+      "email": "maria.garcia@jvcsac.com",
+      "rol_id": 2,
+      "id_empresa": 1,
+      "created_at": "2024-02-10T08:15:00.000000Z",
+      "updated_at": "2024-02-10T08:15:00.000000Z",
+      "rol": {
+        "rol_id": 2,
+        "nombre": "Vendedor"
+      },
+      "empresa": {
+        "id_empresa": 1,
+        "comercial": "J.V.C. SAC",
+        "ruc": "20612706702"
+      }
+    }
+  ]
+}
+```
+
+## Crear Usuario
+
+<api-endpoint method="POST" path="/api/users" />
+
+Crea un nuevo usuario en el sistema con un rol y empresa asignados.
+
+### Parámetros del Body
+
+<param-field body="name" type="string" required>
+  Nombre completo del usuario (máx. 255 caracteres)
+</param-field>
+
+<param-field body="email" type="string" required>
+  Email del usuario (debe ser único, formato válido)
+</param-field>
+
+<param-field body="password" type="string" required>
+  Contraseña (mínimo 6 caracteres)
+</param-field>
+
+<param-field body="password_confirmation" type="string" required>
+  Confirmación de contraseña (debe coincidir con password)
+</param-field>
+
+<param-field body="rol_id" type="integer" required>
+  ID del rol a asignar (debe existir en la tabla roles)
+</param-field>
+
+<param-field body="id_empresa" type="integer" required>
+  ID de la empresa a la que pertenece el usuario
+</param-field>
+
+### Ejemplo de Solicitud
+
+```json
+{
+  "name": "Carlos Rodríguez",
+  "email": "carlos.rodriguez@jvcsac.com",
+  "password": "segura123",
+  "password_confirmation": "segura123",
+  "rol_id": 3,
+  "id_empresa": 1
+}
+```
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Usuario creado exitosamente",
+  "data": {
+    "id": 3,
+    "name": "Carlos Rodríguez",
+    "email": "carlos.rodriguez@jvcsac.com",
+    "rol_id": 3,
+    "id_empresa": 1,
+    "created_at": "2024-03-04T10:30:00.000000Z",
+    "updated_at": "2024-03-04T10:30:00.000000Z"
+  }
+}
+```
+
+### Errores de Validación
+
+```json
+{
+  "success": false,
+  "message": "Error de validación",
+  "errors": {
+    "email": [
+      "El campo email ya ha sido tomado."
+    ],
+    "password": [
+      "El campo password debe tener al menos 6 caracteres."
+    ]
+  }
+}
+```
+
+## Obtener Usuario
+
+<api-endpoint method="GET" path="/api/users/{id}" />
+
+Obtiene los detalles de un usuario específico con sus relaciones.
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID del usuario
+</param-field>
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "name": "María García",
+    "email": "maria.garcia@jvcsac.com",
+    "rol_id": 2,
+    "id_empresa": 1,
+    "created_at": "2024-02-10T08:15:00.000000Z",
+    "updated_at": "2024-02-10T08:15:00.000000Z",
+    "rol": {
+      "rol_id": 2,
+      "nombre": "Vendedor"
+    },
+    "empresa": {
+      "id_empresa": 1,
+      "comercial": "J.V.C. SAC",
+      "ruc": "20612706702"
+    }
+  }
+}
+```
+
+## Actualizar Usuario
+
+<api-endpoint method="PUT" path="/api/users/{id}" />
+
+Actualiza los datos de un usuario existente. Todos los campos son opcionales.
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID del usuario a actualizar
+</param-field>
+
+### Parámetros del Body
+
+<param-field body="name" type="string">
+  Nombre completo del usuario (máx. 255 caracteres)
+</param-field>
+
+<param-field body="email" type="string">
+  Email del usuario (debe ser único)
+</param-field>
+
+<param-field body="password" type="string">
+  Nueva contraseña (mínimo 6 caracteres, opcional)
+</param-field>
+
+<param-field body="password_confirmation" type="string">
+  Confirmación de nueva contraseña (requerido si se envía password)
+</param-field>
+
+<param-field body="rol_id" type="integer">
+  ID del nuevo rol a asignar
+</param-field>
+
+<param-field body="id_empresa" type="integer">
+  ID de la nueva empresa a asignar
+</param-field>
+
+### Ejemplo de Solicitud
+
+```json
+{
+  "name": "María García Sánchez",
+  "rol_id": 3
+}
+```
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Usuario actualizado exitosamente",
+  "data": {
+    "id": 2,
+    "name": "María García Sánchez",
+    "email": "maria.garcia@jvcsac.com",
+    "rol_id": 3,
+    "id_empresa": 1,
+    "updated_at": "2024-03-04T11:45:00.000000Z"
+  }
+}
+```
+
+## Eliminar Usuario
+
+<api-endpoint method="DELETE" path="/api/users/{id}" />
+
+Elimina un usuario del sistema.
+
+<warning>
+  No se puede eliminar el usuario con el que estás autenticado actualmente.
+</warning>
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID del usuario a eliminar
+</param-field>
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Usuario eliminado exitosamente"
+}
+```
+
+### Errores
+
+<response-field name="403" type="error">
+  No puedes eliminar tu propia cuenta
+</response-field>
+
+<response-field name="404" type="error">
+  Usuario no encontrado
+</response-field>
+
+## Obtener Roles
+
+<api-endpoint method="GET" path="/api/users/roles" />
+
+Obtiene la lista de roles disponibles en el sistema para asignar a usuarios.
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "rol_id": 1,
+      "nombre": "Administrador"
+    },
+    {
+      "rol_id": 2,
+      "nombre": "Vendedor"
+    },
+    {
+      "rol_id": 3,
+      "nombre": "Almacenero"
+    },
+    {
+      "rol_id": 4,
+      "nombre": "Contador"
+    }
+  ]
+}
+```
+
+## Sistema de Permisos
+
+### Listar Todos los Permisos
+
+<api-endpoint method="GET" path="/api/permissions" />
+
+Obtiene todos los permisos del sistema agrupados por módulo.
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "module": "ventas",
+      "module_name": "Ventas",
+      "permissions": [
+        {
+          "id": 1,
+          "name": "ventas.view",
+          "display_name": "Ver ventas",
+          "action": "view"
+        },
+        {
+          "id": 2,
+          "name": "ventas.create",
+          "display_name": "Crear ventas",
+          "action": "create"
+        },
+        {
+          "id": 3,
+          "name": "ventas.edit",
+          "display_name": "Editar ventas",
+          "action": "edit"
+        },
+        {
+          "id": 4,
+          "name": "ventas.delete",
+          "display_name": "Eliminar ventas",
+          "action": "delete"
+        }
+      ]
+    },
+    {
+      "module": "productos",
+      "module_name": "Productos",
+      "permissions": [
+        {
+          "id": 5,
+          "name": "productos.view",
+          "display_name": "Ver productos",
+          "action": "view"
+        },
+        {
+          "id": 6,
+          "name": "productos.create",
+          "display_name": "Crear productos",
+          "action": "create"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### Obtener Permisos del Usuario Actual
+
+<api-endpoint method="GET" path="/api/permissions/user" />
+
+Obtiene la lista de permisos del usuario autenticado.
+
+<info>
+  Los usuarios con rol_id = 1 (Administrador) tienen automáticamente todos los permisos sin necesidad de asignarlos explícitamente.
+</info>
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "permissions": [
+    "ventas.view",
+    "ventas.create",
+    "ventas.edit",
+    "productos.view",
+    "clientes.view",
+    "clientes.create"
+  ]
+}
+```
+
+### Obtener Permisos de un Rol
+
+<api-endpoint method="GET" path="/api/permissions/role/{rolId}" />
+
+Obtiene los permisos asignados a un rol específico.
+
+### Parámetros de Ruta
+
+<param-field path="rolId" type="integer" required>
+  ID del rol
+</param-field>
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": {
+    "rol_id": 2,
+    "rol_name": "Vendedor",
+    "permissions": [1, 2, 3, 5, 9, 10, 11]
+  }
+}
+```
+
+### Actualizar Permisos de un Rol
+
+<api-endpoint method="PUT" path="/api/permissions/role/{rolId}" />
+
+Actualiza los permisos asignados a un rol específico.
+
+### Parámetros de Ruta
+
+<param-field path="rolId" type="integer" required>
+  ID del rol
+</param-field>
+
+### Parámetros del Body
+
+<param-field body="permissions" type="array" required>
+  Array de IDs de permisos a asignar al rol
+</param-field>
+
+### Ejemplo de Solicitud
+
+```json
+{
+  "permissions": [1, 2, 3, 5, 6, 9, 10]
+}
+```
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Permisos actualizados correctamente",
+  "should_reload": true
+}
+```
+
+<tip>
+  El campo `should_reload` indica que el frontend debe recargar los permisos del usuario actual si su rol fue modificado.
+</tip>
+
+## Middleware de Permisos
+
+Los endpoints protegidos usan el middleware `permission` con el formato `recurso.accion`:
+
+```php
+// Ejemplo en routes/api.php
+Route::get('productos', [ProductoController::class, 'index'])
+    ->middleware('permission:productos.view');
+
+Route::post('ventas', [VentasController::class, 'store'])
+    ->middleware('permission:ventas.create');
+```
+
+### Formato de Permisos
+
+- `ventas.view` - Ver ventas
+- `ventas.create` - Crear ventas
+- `ventas.edit` - Editar ventas
+- `ventas.delete` - Eliminar ventas
+- `productos.view` - Ver productos
+- `clientes.create` - Crear clientes
+- `cotizaciones.view` - Ver cotizaciones
+
+### Bypass para Administradores
+
+<info>
+  Los usuarios con `rol_id = 1` (Administrador) tienen acceso automático a todos los endpoints sin validación de permisos individuales.
+</info>
+
+## Modelo de Datos
+
+### Tabla: users
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | BIGINT | Primary key |
+| name | VARCHAR(255) | Nombre del usuario |
+| email | VARCHAR(255) | Email único |
+| password | VARCHAR(255) | Hash bcrypt de la contraseña |
+| rol_id | INT | FK a tabla roles |
+| id_empresa | INT | FK a tabla empresas |
+| num_doc | VARCHAR(20) | Número de documento |
+| nombres | VARCHAR(100) | Nombres |
+| apellidos | VARCHAR(100) | Apellidos |
+| telefono | VARCHAR(30) | Teléfono |
+| estado | CHAR(1) | 1=Activo, 0=Inactivo |
+| foto_perfil | VARCHAR(255) | Ruta de foto |
+| created_at | TIMESTAMP | Fecha de creación |
+| updated_at | TIMESTAMP | Fecha de actualización |
+
+### Tabla: roles
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| rol_id | INT | Primary key |
+| nombre | VARCHAR(100) | Nombre del rol |
+| descripcion | TEXT | Descripción del rol |
+
+### Tabla: permissions
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| permission_id | INT | Primary key |
+| name | VARCHAR(100) | Nombre técnico (ej: ventas.view) |
+| display_name | VARCHAR(255) | Nombre para mostrar |
+| module | VARCHAR(50) | Módulo al que pertenece |
+| action | VARCHAR(50) | Acción (view, create, edit, delete) |
+
+### Relación: permission_rol (Pivot)
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id | BIGINT | Primary key |
+| rol_id | INT | FK a roles |
+| permission_id | INT | FK a permissions |

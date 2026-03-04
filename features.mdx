@@ -1,0 +1,342 @@
+---
+title: Características del sistema
+description: Funcionalidades completas del sistema de facturación electrónica con integración SUNAT
+---
+
+## Funcionalidades principales
+
+El sistema ofrece una solución completa para la gestión comercial y tributaria de empresas peruanas, con todas las herramientas necesarias para operar bajo la normativa SUNAT.
+
+## Facturación electrónica
+
+<CardGroup cols={2}>
+  <Card title="Facturas electrónicas" icon="file-invoice">
+    Emisión de facturas (tipo 01) con envío síncrono a SUNAT vía SOAP. Generación automática de XML firmado digitalmente y recepción de CDR.
+  </Card>
+  
+  <Card title="Boletas de venta" icon="receipt">
+    Boletas de venta (tipo 03) con Resumen Diario automático. Compatible con ventas al contado y crédito con cuotas.
+  </Card>
+  
+  <Card title="Notas de crédito" icon="file-circle-minus">
+    Notas de crédito (tipo 07) vinculadas a documentos de venta. Incluye motivos SUNAT: anulación, descuentos, devoluciones, etc.
+  </Card>
+  
+  <Card title="Notas de débito" icon="file-circle-plus">
+    Notas de débito (tipo 08) para aumentar el importe de facturas. Motivos: intereses por mora, aumentos en operaciones, penalidades.
+  </Card>
+</CardGroup>
+
+### Generación de XML y firma digital
+
+El sistema utiliza el servicio `SunatService.php` (~700+ líneas) que maneja toda la lógica SUNAT:
+
+```php
+// app/Services/SunatService.php
+public function enviarFactura(Venta $venta): array
+{
+    $see = $this->getSee($venta->empresa);
+    $invoice = $this->buildInvoice($venta);
+    
+    $result = $see->send($invoice);
+    
+    if ($result->isSuccess()) {
+        $this->guardarXml($venta, $see->getFactory()->getLastXml());
+        $this->guardarCdr($venta, $result->getCdrZip());
+    }
+    
+    return $this->procesarRespuesta($result);
+}
+```
+
+<Note>
+Los archivos XML y CDR se almacenan en `storage/app/sunat/` organizados por RUC:
+- `xml/{ruc}/` para documentos XML generados
+- `cdr/{ruc}/` para constancias de recepción de SUNAT
+</Note>
+
+## Guías de remisión electrónicas
+
+<CardGroup cols={2}>
+  <Card title="GRE - Guía remitente" icon="truck">
+    Guías de remisión electrónicas (tipo 09) mediante API REST de SUNAT. Flujo asíncrono con tickets y consulta de estado.
+  </Card>
+  
+  <Card title="Motivos de traslado" icon="route">
+    Compatible con todos los motivos SUNAT: venta, compra, traslado entre establecimientos, devolución, consignación, etc.
+  </Card>
+</CardGroup>
+
+### Flujo asíncrono GRE
+
+Las guías utilizan OAuth 2.0 y retornan un ticket que debe consultarse:
+
+```php
+// Envío asíncrono
+Route::post('guias-remision/{id}/enviar', [GuiaRemisionController::class, 'enviar']);
+
+// Consulta posterior del ticket
+Route::get('guias-remision/{id}/ticket', [GuiaRemisionController::class, 'consultarTicket']);
+```
+
+<Info>
+La API GRE requiere credenciales OAuth separadas configuradas en `SUNAT_GRE_CLIENT_ID` y `SUNAT_GRE_CLIENT_SECRET`.
+</Info>
+
+## Gestión de productos e inventario
+
+<CardGroup cols={2}>
+  <Card title="Control de stock" icon="warehouse">
+    Gestión de inventario por almacén con stock en tiempo real. Movimientos automáticos en compras y ventas.
+  </Card>
+  
+  <Card title="Productos y servicios" icon="box">
+    Catálogo completo con código, nombre, precio, unidades SUNAT, categorías y códigos de barras.
+  </Card>
+  
+  <Card title="Movimientos de stock" icon="arrows-turn-to-dots">
+    Registro de entradas, salidas, ajustes y transferencias. Trazabilidad completa con usuario y fecha.
+  </Card>
+  
+  <Card title="Importación Excel" icon="file-excel">
+    Carga masiva de productos desde Excel. Plantilla descargable con validación de datos.
+  </Card>
+</CardGroup>
+
+### Servicio de productos
+
+El `ProductoService.php` maneja toda la lógica de stock:
+
+```php
+public function descontarStock(Producto $producto, float $cantidad, string $motivo)
+{
+    $producto->cantidad -= $cantidad;
+    $producto->save();
+    
+    MovimientoStock::create([
+        'id_producto' => $producto->id_producto,
+        'tipo_movimiento' => 'salida',
+        'cantidad' => $cantidad,
+        'motivo' => $motivo
+    ]);
+}
+```
+
+## Gestión comercial
+
+<CardGroup cols={2}>
+  <Card title="Ventas" icon="cart-shopping">
+    Registro de ventas con múltiples productos y servicios. Soporte para descuentos, IGV, percepciones y detracciones.
+  </Card>
+  
+  <Card title="Compras" icon="basket-shopping">
+    Control de compras a proveedores con ingreso automático al stock. Compatible con facturas y boletas de proveedores.
+  </Card>
+  
+  <Card title="Cotizaciones" icon="file-lines">
+    Sistema de cotizaciones con conversión a ventas. Estados: pendiente, aceptada, rechazada, vencida.
+  </Card>
+  
+  <Card title="Clientes y proveedores" icon="users">
+    Registro completo con RUC/DNI, dirección, contacto. Búsqueda automática en SUNAT/RENIEC.
+  </Card>
+</CardGroup>
+
+### Formas de pago
+
+Soporte para ventas al contado y crédito:
+
+```php
+// Contado
+$formaPago = new FormaPagoContado();
+$formaPago->setMontoTotal($total);
+
+// Crédito con cuotas
+$formaPago = new FormaPagoCredito();
+$formaPago->setCuotas([
+    (new Cuota())->setMonto(500)->setFechaPago(new DateTime('2026-04-01')),
+    (new Cuota())->setMonto(500)->setFechaPago(new DateTime('2026-05-01'))
+]);
+```
+
+## Reportes y exportaciones
+
+<CardGroup cols={2}>
+  <Card title="PDFs personalizados" icon="file-pdf">
+    Generación de PDFs con mPDF en formatos A4 y ticket térmico. Plantillas personalizables por empresa.
+  </Card>
+  
+  <Card title="Exportación Excel" icon="file-excel">
+    Reportes de ventas, compras y productos con formato SUNAT (PLE). Estilos personalizados con PhpSpreadsheet.
+  </Card>
+  
+  <Card title="Registro de ventas (RVTA)" icon="book">
+    Exportación TXT formato SUNAT para Libro Electrónico de Ventas (PLE-VENTAS).
+  </Card>
+  
+  <Card title="Reportes de ganancias" icon="chart-line">
+    Análisis de rentabilidad por producto, período y cliente. Exportación a Excel con gráficos.
+  </Card>
+</CardGroup>
+
+### Endpoints de exportación
+
+```php
+Route::get('ventas/exportar-txt', [VentaExportController::class, 'exportarTxt']);
+Route::get('ventas/exportar-excel', [VentaExportController::class, 'exportarExcel']);
+Route::get('ventas/reporte-rvta', [VentaExportController::class, 'reporteRVTA']);
+Route::get('ventas/reporte-producto', [VentaExportController::class, 'reporteVentasProducto']);
+Route::get('ventas/reporte-ganancias', [VentaExportController::class, 'reporteGanancias']);
+```
+
+## Operaciones SUNAT avanzadas
+
+<CardGroup cols={2}>
+  <Card title="Resumen Diario" icon="calendar-check">
+    Envío de Resumen Diario de boletas (RC). Proceso asíncrono con generación de ticket y consulta posterior.
+  </Card>
+  
+  <Card title="Comunicación de Baja" icon="ban">
+    Anulación de documentos electrónicos mediante Comunicación de Baja. Compatible con facturas, notas y guías.
+  </Card>
+  
+  <Card title="Consulta de comprobantes" icon="magnifying-glass">
+    Verificación de validez de comprobantes en SUNAT. Consulta por RUC, tipo, serie y número.
+  </Card>
+  
+  <Card title="Modo beta y producción" icon="toggle-on">
+    Cambio fácil entre entorno de pruebas (beta) y producción. Certificados y credenciales por empresa.
+  </Card>
+</CardGroup>
+
+### Resumen Diario
+
+Las boletas requieren un proceso adicional:
+
+```php
+// 1. Emitir boletas durante el día
+// 2. Generar Resumen Diario al cierre
+Route::post('resumen-diario', [ResumenDiarioController::class, 'store']);
+
+// 3. Consultar ticket para obtener CDR
+Route::post('resumen-diario/consultar', [ResumenDiarioController::class, 'consultarTicket']);
+```
+
+<Warning>
+El queue worker debe estar activo para procesar operaciones asíncronas (Resumen Diario, Comunicación de Baja). Usa `composer dev` para iniciarlo automáticamente.
+</Warning>
+
+## Sistema de permisos
+
+<CardGroup cols={2}>
+  <Card title="Roles y permisos" icon="shield-halved">
+    Sistema granular de permisos por recurso y acción: `ventas.create`, `productos.view`, `reportes.export`, etc.
+  </Card>
+  
+  <Card title="Usuarios multi-empresa" icon="user-group">
+    Cada usuario puede pertenecer a múltiples empresas y cambiar entre ellas sin cerrar sesión.
+  </Card>
+</CardGroup>
+
+### Middleware de permisos
+
+```php
+Route::get('ventas', [VentasController::class, 'index'])
+    ->middleware('permission:ventas.view');
+
+Route::post('ventas', [VentasController::class, 'store'])
+    ->middleware('permission:ventas.create');
+```
+
+<Info>
+El rol Admin (rol_id=1) tiene acceso completo a todos los recursos sin verificación de permisos.
+</Info>
+
+## Configuración empresarial
+
+<CardGroup cols={2}>
+  <Card title="Multi-empresa" icon="building">
+    Gestión de múltiples empresas con RUC, razón social, dirección y logo. Cada empresa con sus propios certificados SUNAT.
+  </Card>
+  
+  <Card title="Series de documentos" icon="hashtag">
+    Configuración de series para cada tipo de documento: F001 (facturas), B001 (boletas), T001 (guías), FC01/BC01 (notas).
+  </Card>
+  
+  <Card title="Plantillas de impresión" icon="print">
+    Personalización de PDFs por empresa: logo, colores, footer, datos de contacto y textos legales.
+  </Card>
+  
+  <Card title="Certificados digitales" icon="certificate">
+    Gestión de certificados .pem por empresa. Soporte para modo beta con certificado de prueba compartido.
+  </Card>
+</CardGroup>
+
+### Cambio de empresa activa
+
+```php
+Route::post('/switch-empresa', [AuthController::class, 'switchEmpresa']);
+
+// Todas las consultas se filtran automáticamente
+$ventas = Venta::where('id_empresa', auth()->user()->empresa_activa_id)->get();
+```
+
+## Dashboard y estadísticas
+
+<CardGroup cols={2}>
+  <Card title="Dashboard ejecutivo" icon="chart-pie">
+    Vista general con ventas del día, mes y año. Gráficos de evolución y productos más vendidos.
+  </Card>
+  
+  <Card title="Estadísticas en tiempo real" icon="gauge-high">
+    Totales de comprobantes emitidos, estado SUNAT, pendientes de envío y anulados.
+  </Card>
+</CardGroup>
+
+```php
+Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+
+// Retorna:
+// - ventasHoy, ventasMes, ventasAnio
+// - totalComprobantes, aceptados, rechazados, pendientes
+// - productosTopVentas
+// - graficoVentasMensual
+```
+
+## Integración frontend
+
+El frontend React está organizado por features:
+
+```
+resources/js/components/
+├── Facturacion/
+│   └── Ventas/
+│       ├── page.jsx          # Lista con DataTable
+│       ├── columns/          # Definición de columnas
+│       ├── hooks/            # useVentas, useCreateVenta
+│       └── VentaDetailModal.jsx
+├── GuiaRemision/
+├── NotaCredito/
+├── Cotizaciones/
+└── ui/                       # Componentes base Radix UI
+```
+
+<Note>
+Cada módulo sigue el patrón: `page.jsx` → `columns/` → `hooks/` → servicios API. Los hooks llaman a servicios en `resources/js/services/` que manejan fetch con tokens.
+</Note>
+
+## Características técnicas adicionales
+
+- **Autenticación Sanctum:** Tokens Bearer almacenados en `localStorage`
+- **PDF con tokens en URL:** Middleware `TokenFromQuery` permite `?token=` para descargas
+- **Búsqueda SUNAT/RENIEC:** Integración para validar y autocompletar datos de RUC/DNI
+- **Ubigeos INEI:** Base de datos completa de departamentos, provincias y distritos
+- **Validaciones SUNAT:** Formato de RUC, series, numeración correlativa
+- **Timezone Perú:** Todos los DateTime en America/Lima para correcta generación XML
+- **Code formatting:** Laravel Pint para backend, Prettier para frontend
+
+---
+
+<Card title="Ver documentación API" icon="code" href="/api/authentication">
+  Explora todos los endpoints disponibles con ejemplos de request/response.
+</Card>

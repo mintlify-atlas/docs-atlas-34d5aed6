@@ -1,0 +1,283 @@
+---
+title: 'Configuración de SUNAT'
+description: 'Configurar credenciales SOL, endpoints y RUC para la integración con SUNAT'
+---
+
+## Credenciales SOL
+
+Para enviar comprobantes a SUNAT necesita obtener credenciales del Sistema de Operaciones en Línea (SOL).
+
+### ¿Qué es SOL?
+
+SOL es el portal de SUNAT donde las empresas realizan trámites tributarios. Las credenciales SOL constan de:
+
+- **Usuario SOL**: Combinación de RUC + código de usuario
+- **Clave SOL**: Contraseña del usuario
+
+### Obtener Credenciales SOL
+
+1. Ingrese a [SUNAT Operaciones en Línea](https://www.sunat.gob.pe/)
+2. Solicite su Clave SOL si no la tiene
+3. Genere un **usuario secundario** para facturación electrónica
+4. Asigne permisos de "Emisión de Comprobantes Electrónicos"
+
+<Warning>
+**Nunca use la clave SOL del representante legal en producción**. Cree un usuario secundario específico para el sistema con permisos limitados.
+</Warning>
+
+### Usuario SOL de Prueba (Beta)
+
+SUNAT proporciona credenciales de prueba universales:
+
+```bash
+RUC: 20000000001
+Usuario SOL: MODDATOS
+Clave SOL: moddatos
+```
+
+Estas credenciales se usan automáticamente cuando la empresa está en modo `beta`.
+
+## Configuración de Empresa
+
+Cada empresa en el sistema debe configurarse con:
+
+### Campos Requeridos
+
+```php
+// Tabla: empresas
+ruc              // RUC de 11 dígitos
+razon_social     // Razón social completa
+user_sol         // Usuario SOL (sin el RUC)
+clave_sol        // Clave SOL (cifrada)
+modo             // 'beta' o 'produccion'
+```
+
+### Campos Opcionales
+
+```php
+ubigeo           // Código de ubigeo (6 dígitos)
+distrito         // Nombre del distrito
+provincia        // Nombre de la provincia
+departamento     // Nombre del departamento
+direccion        // Dirección fiscal
+igv              // Tasa de IGV personalizada (default: 0.18)
+```
+
+### Ejemplo de Configuración
+
+```php
+// En la base de datos
+INSERT INTO empresas (ruc, razon_social, user_sol, clave_sol, modo, ubigeo, distrito, provincia, departamento, direccion) VALUES (
+    '20612706702',
+    'MI EMPRESA SAC',
+    'FACTURADOR01',      // Usuario SOL sin RUC
+    'encrypted_password', // Cifrado con bcrypt
+    'produccion',
+    '150101',            // Lima - Lima - Lima
+    'Lima',
+    'Lima',
+    'Lima',
+    'Av. Principal 123'
+);
+```
+
+## Variables de Entorno
+
+Configure las variables en su archivo `.env`:
+
+```bash
+# Tasa de IGV (opcional, default: 0.18)
+SUNAT_IGV=0.18
+
+# API GRE (Guías de Remisión Electrónica)
+SUNAT_GRE_CLIENT_ID=tu_client_id
+SUNAT_GRE_CLIENT_SECRET=tu_client_secret
+```
+
+### Obtener Credenciales GRE
+
+Las guías de remisión electrónica (GRE 2022) requieren autenticación OAuth2:
+
+1. Solicite acceso a la API GRE en SUNAT
+2. SUNAT le proporcionará `client_id` y `client_secret`
+3. Configure estas credenciales en `.env`
+
+<Warning>
+**Las credenciales GRE son distintas a las credenciales SOL**. Son específicas para la API REST de guías electrónicas.
+</Warning>
+
+## Endpoints SUNAT
+
+Los endpoints están configurados en `config/sunat.php`:
+
+### Endpoints de Facturación
+
+```php
+'facturacion' => [
+    'beta' => 'https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService',
+    'production' => 'https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService',
+]
+```
+
+**Uso**: Facturas, boletas, notas de crédito/débito (SOAP)
+
+### Endpoints de Guías
+
+```php
+'guia' => [
+    'beta' => 'https://e-beta.sunat.gob.pe/ol-ti-itemision-guia-gem-beta/billService',
+    'production' => 'https://e-guiaremision.sunat.gob.pe/ol-ti-itemision-guia-gem/billService',
+]
+```
+
+**Uso**: Guías de remisión (SOAP - versión antigua)
+
+### Endpoints GRE (REST)
+
+```php
+'gre' => [
+    'auth' => 'https://api-seguridad.sunat.gob.pe/v1',
+    'cpe' => 'https://api-cpe.sunat.gob.pe/v1',
+]
+```
+
+**Uso**: Guías de remisión electrónica 2022 (REST con OAuth2)
+
+## Ambiente Beta vs Producción
+
+### Modo Beta (Pruebas)
+
+Características:
+- Usa endpoints de prueba de SUNAT
+- Credenciales universales: `20000000001` / `MODDATOS` / `moddatos`
+- No tiene validez tributaria
+- Ideal para desarrollo y testing
+- El RUC de la empresa es reemplazado automáticamente por `20000000001`
+
+```php
+// SunatService.php - línea 52-54
+if ($empresa->modo === 'beta') {
+    $beta = config('sunat.beta');
+    $see->setClaveSOL($beta['ruc'], $beta['usuario_sol'], $beta['clave_sol']);
+}
+```
+
+### Modo Producción
+
+Características:
+- Usa endpoints oficiales de SUNAT
+- Requiere credenciales SOL reales de cada empresa
+- Los comprobantes tienen validez tributaria
+- Se usa el RUC real de la empresa
+- Requiere certificado digital válido
+
+```php
+// SunatService.php - línea 55-57
+else {
+    $see->setClaveSOL($empresa->ruc, $empresa->user_sol, $empresa->clave_sol);
+}
+```
+
+### Cambiar de Beta a Producción
+
+1. Verifique que todos los comprobantes de prueba funcionan correctamente
+2. Obtenga un certificado digital válido (ver sección Certificados)
+3. Configure credenciales SOL reales en la empresa
+4. Cambie el campo `modo` de la empresa:
+
+```sql
+UPDATE empresas SET modo = 'produccion' WHERE id = 1;
+```
+
+5. Pruebe con un documento de prueba en producción
+
+<Warning>
+**Una vez en producción, los comprobantes enviados NO se pueden borrar**, solo anular mediante notas de crédito o comunicaciones de baja.
+</Warning>
+
+## Configuración de RUC
+
+El RUC se gestiona automáticamente según el modo:
+
+```php
+// SunatService.php - línea 947-950
+private function getRuc(Empresa $empresa): string
+{
+    return $empresa->modo === 'beta' 
+        ? config('sunat.beta.ruc') 
+        : $empresa->ruc;
+}
+```
+
+### Validación de RUC
+
+El RUC debe cumplir:
+- Exactamente 11 dígitos numéricos
+- Comenzar con 10, 15, 17 o 20 (según tipo de contribuyente)
+- Pasar algoritmo de verificación (módulo 11)
+
+Ejemplos válidos:
+- `20612706702` (Persona Jurídica)
+- `10456789012` (Persona Natural con negocio)
+
+## Series y Numeración
+
+Configure las series según el tipo de documento:
+
+| Tipo | Serie | Ejemplo |
+|------|-------|----------|
+| Factura | F001, F002... | F001-00000001 |
+| Boleta | B001, B002... | B001-00000001 |
+| Nota Crédito (Factura) | FC01, FC02... | FC01-00000001 |
+| Nota Crédito (Boleta) | BC01, BC02... | BC01-00000001 |
+| Nota Débito (Factura) | FD01, FD02... | FD01-00000001 |
+| Guía de Remisión | T001, T002... | T001-00000001 |
+
+### Reglas de Series
+
+- **4 caracteres**: Siempre 4 dígitos/letras
+- **Sin símbolos**: Solo alfanuméricos
+- **Única por punto de emisión**: Cada establecimiento debe tener series diferentes
+
+<Warning>
+**No reutilice números de serie**. Una vez enviado un comprobante con una serie-número, ese par es único e irrepetible.
+</Warning>
+
+## Verificar Configuración
+
+Para verificar que la configuración es correcta:
+
+```php
+use App\Services\SunatService;
+use App\Models\Empresa;
+
+$empresa = Empresa::find(1);
+$sunatService = app(SunatService::class);
+
+// Verificar endpoint
+$endpoint = $sunatService->getEndpoint($empresa, 'facturacion');
+echo "Endpoint: {$endpoint}\n";
+
+// Verificar certificado
+try {
+    $cert = $sunatService->getCertificate($empresa);
+    echo "Certificado encontrado: " . strlen($cert) . " bytes\n";
+} catch (\Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+}
+
+// Verificar credenciales
+$see = $sunatService->getSee($empresa);
+echo "Configuración lista\n";
+```
+
+## Próximos Pasos
+
+<CardGroup cols={2}>
+  <Card title="Certificados Digitales" icon="certificate" href="/sunat/certificates">
+    Configurar certificados para firmar documentos
+  </Card>
+  <Card title="Visión General" icon="book" href="/sunat/overview">
+    Entender la integración completa
+  </Card>
+</CardGroup>

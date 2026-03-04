@@ -1,0 +1,467 @@
+---
+title: 'Ventas'
+description: 'API para gestionar ventas, facturas y boletas electrónicas'
+---
+
+## GET /api/ventas
+
+Lista todas las ventas de la empresa activa.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.view`.
+
+### Parámetros de Consulta
+
+No requiere parámetros.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="ventas" type="array">
+  Lista de ventas
+  <Expandable title="Estructura">
+    <ResponseField name="id_venta" type="integer">
+      ID único de la venta
+    </ResponseField>
+    <ResponseField name="id_tido" type="integer">
+      Tipo de documento (1: Boleta, 2: Factura, 6: Nota de Venta)
+    </ResponseField>
+    <ResponseField name="serie" type="string">
+      Serie del comprobante (ej: F001, B001)
+    </ResponseField>
+    <ResponseField name="numero" type="integer">
+      Número correlativo del comprobante
+    </ResponseField>
+    <ResponseField name="fecha_emision" type="string">
+      Fecha de emisión (formato: YYYY-MM-DD)
+    </ResponseField>
+    <ResponseField name="cliente" type="object">
+      Datos del cliente
+      <Expandable title="Propiedades">
+        <ResponseField name="documento" type="string">
+          DNI o RUC del cliente
+        </ResponseField>
+        <ResponseField name="datos" type="string">
+          Nombre o razón social del cliente
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="tipo_documento" type="object">
+      <ResponseField name="abreviatura" type="string">
+        Abreviatura del tipo de documento
+      </ResponseField>
+    </ResponseField>
+    <ResponseField name="subtotal" type="number">
+      Base imponible (sin IGV)
+    </ResponseField>
+    <ResponseField name="igv" type="number">
+      Monto del IGV
+    </ResponseField>
+    <ResponseField name="total" type="number">
+      Total de la venta
+    </ResponseField>
+    <ResponseField name="tipo_moneda" type="string">
+      Moneda (PEN o USD)
+    </ResponseField>
+    <ResponseField name="estado" type="string">
+      Estado de la venta (1: Activa, 2: Anulada, 3: Vendida)
+    </ResponseField>
+    <ResponseField name="estado_sunat" type="string">
+      Estado en SUNAT (0: Pendiente, 1: Enviado)
+    </ResponseField>
+    <ResponseField name="nombre_xml" type="string">
+      Nombre del archivo XML generado
+    </ResponseField>
+    <ResponseField name="cdr_url" type="string">
+      Ruta del CDR (Constancia de Recepción de SUNAT)
+    </ResponseField>
+    <ResponseField name="afecta_stock" type="boolean">
+      Indica si afectó el stock
+    </ResponseField>
+    <ResponseField name="stock_real_descontado" type="boolean">
+      Indica si se descontó del almacén real
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/ventas" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/ventas
+
+Crea una nueva venta, factura o boleta.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.create`.
+
+### Parámetros del Body
+
+<ParamField body="id_tido" type="integer" required>
+  Tipo de documento:
+  - 1: Boleta (requiere DNI de 8 dígitos)
+  - 2: Factura (requiere RUC de 11 dígitos)
+  - 6: Nota de venta
+</ParamField>
+
+<ParamField body="id_cliente" type="integer">
+  ID del cliente existente (opcional si se envía cliente_documento)
+</ParamField>
+
+<ParamField body="cliente_documento" type="string" required>
+  Documento del cliente (DNI o RUC). Obligatorio si no se envía id_cliente.
+</ParamField>
+
+<ParamField body="cliente_datos" type="string" required>
+  Nombre o razón social del cliente. Obligatorio si no se envía id_cliente.
+</ParamField>
+
+<ParamField body="cliente_direccion" type="string">
+  Dirección del cliente
+</ParamField>
+
+<ParamField body="fecha_emision" type="string" required>
+  Fecha de emisión (formato: YYYY-MM-DD)
+</ParamField>
+
+<ParamField body="serie" type="string" required>
+  Serie del comprobante (ej: F001, B001)
+</ParamField>
+
+<ParamField body="numero" type="integer" required>
+  Número correlativo del comprobante
+</ParamField>
+
+<ParamField body="subtotal" type="number" required>
+  Base imponible (sin IGV)
+</ParamField>
+
+<ParamField body="igv" type="number" required>
+  Monto del IGV
+</ParamField>
+
+<ParamField body="total" type="number" required>
+  Total de la venta
+</ParamField>
+
+<ParamField body="tipo_moneda" type="string" required>
+  Moneda: PEN o USD
+</ParamField>
+
+<ParamField body="afecta_stock" type="boolean">
+  Indica si debe descontar stock. Por defecto true (excepto para notas de venta).
+</ParamField>
+
+<ParamField body="productos" type="array" required>
+  Lista de productos de la venta (mínimo 1)
+  <Expandable title="Estructura">
+    <ParamField body="id_producto" type="integer" required>
+      ID del producto
+    </ParamField>
+    <ParamField body="cantidad" type="integer" required>
+      Cantidad vendida (mínimo 1)
+    </ParamField>
+    <ParamField body="precio_unitario" type="number" required>
+      Precio unitario
+    </ParamField>
+    <ParamField body="subtotal" type="number" required>
+      Subtotal del item
+    </ParamField>
+    <ParamField body="igv" type="number" required>
+      IGV del item
+    </ParamField>
+    <ParamField body="total" type="number" required>
+      Total del item
+    </ParamField>
+    <ParamField body="unidad_medida" type="string">
+      Código SUNAT de unidad (default: NIU)
+    </ParamField>
+    <ParamField body="tipo_afectacion_igv" type="string">
+      Tipo de afectación IGV (default: 10 - Gravado)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="pago_id_tipo_pago" type="integer">
+  ID del método de pago
+</ParamField>
+
+<ParamField body="pago_numero_operacion" type="string">
+  Número de operación del pago
+</ParamField>
+
+<ParamField body="pago_banco" type="string">
+  Banco del pago
+</ParamField>
+
+<ParamField body="pago_voucher" type="file">
+  Imagen del voucher (formatos: jpeg, png, jpg, webp. Máximo: 2MB)
+</ParamField>
+
+<ParamField body="cotizacion_id" type="integer">
+  ID de cotización relacionada (cambiará su estado a 'aprobada')
+</ParamField>
+
+<ParamField body="nota_venta_id" type="integer">
+  ID de nota de venta relacionada (cambiará su estado a 'vendida')
+</ParamField>
+
+### Validaciones Importantes
+
+- **Factura (id_tido=2)**: Requiere RUC de 11 dígitos. No acepta DNI.
+- **Boleta (id_tido=1)**: Requiere DNI de 8 dígitos. No acepta RUC.
+- Si `afecta_stock` es true, se descuenta el stock automáticamente al crear la venta.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la venta fue creada exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje descriptivo de la operación
+</ResponseField>
+
+<ResponseField name="venta" type="object">
+  <ResponseField name="id_venta" type="integer">
+    ID de la venta creada
+  </ResponseField>
+  <ResponseField name="numero_completo" type="string">
+    Número completo del comprobante (ej: F001-000001)
+  </ResponseField>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/ventas" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id_tido": 2,
+    "cliente_documento": "20612706702",
+    "cliente_datos": "EMPRESA EJEMPLO SAC",
+    "cliente_direccion": "AV. EJEMPLO 123",
+    "fecha_emision": "2024-01-15",
+    "serie": "F001",
+    "numero": 1,
+    "subtotal": 100.00,
+    "igv": 18.00,
+    "total": 118.00,
+    "tipo_moneda": "PEN",
+    "afecta_stock": true,
+    "productos": [
+      {
+        "id_producto": 1,
+        "cantidad": 2,
+        "precio_unitario": 50.00,
+        "subtotal": 100.00,
+        "igv": 18.00,
+        "total": 118.00,
+        "unidad_medida": "NIU",
+        "tipo_afectacion_igv": "10"
+      }
+    ]
+  }'
+```
+
+---
+
+## GET /api/ventas/{id}
+
+Obtiene el detalle completo de una venta específica.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la venta
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="venta" type="object">
+  Objeto completo de la venta con todas sus relaciones (cliente, productos, servicios, cuotas, pagos)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/ventas/123" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/ventas/{id}/anular
+
+Anula una venta y retorna el stock al almacén si corresponde.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.delete`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la venta a anular
+</ParamField>
+
+### Parámetros del Body
+
+<ParamField body="motivo_anulacion" type="string" required>
+  Motivo de la anulación (máximo 500 caracteres)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la venta fue anulada exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la anulación. Indica si el stock fue retornado.
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/ventas/123/anular" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "motivo_anulacion": "Error en el monto facturado"
+  }'
+```
+
+---
+
+## GET /api/ventas/proximo-numero
+
+Obtiene el próximo número correlativo disponible para una serie.
+
+### Autenticación
+Requiere autenticación con token Bearer.
+
+### Parámetros de Consulta
+
+<ParamField query="serie" type="string">
+  Serie del comprobante (default: F001)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="numero" type="integer">
+  Próximo número correlativo
+</ResponseField>
+
+<ResponseField name="numero_completo" type="string">
+  Número completo con formato (ej: F001-000042)
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/ventas/proximo-numero?serie=F001" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/ventas/{id}/preview-descontar-stock
+
+Previsualiza qué productos existen en el almacén real (almacén 2) antes de descontar stock.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la venta
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de productos con su disponibilidad en almacén 2
+</ResponseField>
+
+<ResponseField name="stock_real_descontado" type="boolean">
+  Indica si ya se descontó el stock real
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/ventas/123/preview-descontar-stock" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/ventas/{id}/descontar-stock
+
+Descuenta el stock del almacén real (almacén 2) para una venta.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `ventas.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID de la venta
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando el descuento de stock
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/ventas/123/descontar-stock" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## Códigos de Error
+
+- **422 Unprocessable Entity**: Error de validación. La respuesta incluye el campo `errors` con los detalles.
+- **404 Not Found**: Venta no encontrada.
+- **500 Internal Server Error**: Error en el servidor.
+
+## Notas Importantes
+
+- Todas las ventas están asociadas a la empresa del usuario autenticado.
+- El stock se descuenta automáticamente al crear la venta si `afecta_stock` es true.
+- Las facturas requieren RUC de 11 dígitos. Las boletas requieren DNI.
+- El sistema sincroniza automáticamente el número correlativo en `documentos_empresas`.

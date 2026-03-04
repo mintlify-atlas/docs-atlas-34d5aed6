@@ -1,0 +1,519 @@
+---
+title: 'Gestión de Inventario'
+description: 'Sistema de control de productos, stock y movimientos de almacén'
+icon: 'boxes-stacked'
+---
+
+## Descripción General
+
+El módulo de inventario permite gestionar productos con control de stock en múltiples almacenes, seguimiento de movimientos y soporte para diferentes precios y unidades de medida.
+
+## Gestión de Productos
+
+### Listar Productos
+
+Filtra productos por empresa, almacén y búsqueda de texto.
+
+<CodeGroup>
+```php ProductoController.php:16-41
+public function index(Request $request)
+{
+    try {
+        $user = $request->user();
+        
+        // Obtener empresa activa del header o empresa del usuario
+        $idEmpresa = $user->id_empresa;
+        if ($request->header('X-Empresa-Activa')) {
+            $idEmpresa = $request->header('X-Empresa-Activa');
+        }
+        
+        $productos = $this->productoService->listar(
+            $idEmpresa,
+            $request->get('almacen', '1'),
+            $request->get('search'),
+            $request->boolean('solo_con_stock', false)
+        );
+
+        return response()->json(['success' => true, 'data' => $productos]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener productos: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Info>
+**Empresa Activa**
+
+El sistema soporta multi-empresa. Se puede especificar la empresa activa mediante:
+- Header HTTP: `X-Empresa-Activa: {id_empresa}`
+- Por defecto usa `$user->id_empresa`
+</Info>
+
+### Crear Producto
+
+Crea un producto con opción de imagen y sincronización entre almacenes.
+
+<CodeGroup>
+```php ProductoController.php:56-85
+public function store(ProductoRequest $request)
+{
+    try {
+        $user = $request->user();
+        $data = $request->validated();
+
+        $idEmpresa = $user->id_empresa;
+        if ($request->header('X-Empresa-Activa')) {
+            $idEmpresa = $request->header('X-Empresa-Activa');
+        }
+
+        if ($request->hasFile('imagen')) {
+            $data['imagen'] = $this->productoService->subirImagen($request->file('imagen'));
+        }
+
+        $producto = $this->productoService->crear($data, $idEmpresa);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto creado exitosamente en ambos almacenes',
+            'data' => $producto,
+        ], 201);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al crear producto: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Warning>
+**Creación en Ambos Almacenes**
+
+Al crear un producto, se genera automáticamente en **ambos almacenes** (virtual y real) con el mismo código para facilitar la sincronización.
+</Warning>
+
+### Actualizar Producto
+
+<CodeGroup>
+```php ProductoController.php:87-114
+public function update(ProductoRequest $request, $id)
+{
+    try {
+        $producto = Producto::findOrFail($id);
+        $data = $request->except(['imagen']);
+
+        if ($request->hasFile('imagen')) {
+            $data['imagen'] = $this->productoService->subirImagen(
+                $request->file('imagen'),
+                $producto->imagen
+            );
+        }
+
+        $resultado = $this->productoService->actualizar($producto, $data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto actualizado exitosamente' . ($resultado['sincronizado'] ? ' (sincronizado en ambos almacenes)' : ''),
+            'data' => $resultado['producto'],
+            'sincronizado' => $resultado['sincronizado'],
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al actualizar producto: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+## Modelo de Datos
+
+### Producto Model
+
+<CodeGroup>
+```php Producto.php:8-55
+protected $table = 'productos';
+protected $primaryKey = 'id_producto';
+
+protected $fillable = [
+    'codigo',
+    'cod_barra',
+    'nombre',
+    'descripcion',
+    'precio',
+    'costo',
+    'precio_mayor',
+    'precio_menor',
+    'precio_unidad',
+    'cantidad',
+    'stock_minimo',
+    'stock_maximo',
+    'id_empresa',
+    'categoria_id',
+    'unidad_id',
+    'almacen',
+    'codsunat',
+    'usar_barra',
+    'usar_multiprecio',
+    'moneda',
+    'estado',
+    'imagen',
+    'ultima_salida',
+    'fecha_ultimo_ingreso',
+];
+
+protected $casts = [
+    'precio' => 'decimal:2',
+    'costo' => 'decimal:2',
+    'precio_mayor' => 'decimal:2',
+    'precio_menor' => 'decimal:2',
+    'precio_unidad' => 'decimal:2',
+    'cantidad' => 'integer',
+    'stock_minimo' => 'integer',
+    'stock_maximo' => 'integer',
+    'ultima_salida' => 'date',
+    'fecha_ultimo_ingreso' => 'datetime',
+];
+```
+</CodeGroup>
+
+### Relaciones
+
+<CodeGroup>
+```php Producto.php:57-88
+public function empresa()
+{
+    return $this->belongsTo(Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+public function categoria()
+{
+    return $this->belongsTo(Categoria::class, 'categoria_id');
+}
+
+public function unidad()
+{
+    return $this->belongsTo(Unidad::class, 'unidad_id');
+}
+
+// Scopes
+public function scopeAlmacen($query, $almacen)
+{
+    return $query->where('almacen', $almacen);
+}
+
+public function scopeActivo($query)
+{
+    return $query->where('estado', '1');
+}
+
+public function scopeEmpresa($query, $idEmpresa)
+{
+    return $query->where('id_empresa', $idEmpresa);
+}
+```
+</CodeGroup>
+
+## Sistema de Almacenes
+
+El sistema maneja dos almacenes principales:
+
+<CardGroup cols={2}>
+  <Card title="Almacén 1 - Virtual" icon="warehouse">
+    Stock virtual o de exhibición
+    
+    Usado para ventas y control interno
+  </Card>
+  <Card title="Almacén 2 - Real" icon="warehouse-full">
+    Stock físico real
+    
+    Inventario real en bodega
+  </Card>
+</CardGroup>
+
+## Movimientos de Stock
+
+### Modelo MovimientoStock
+
+<CodeGroup>
+```php MovimientoStock.php:10-35
+protected $table = 'movimientos_stock';
+protected $primaryKey = 'id_movimiento';
+
+protected $fillable = [
+    'id_producto',
+    'tipo_movimiento',
+    'cantidad',
+    'stock_anterior',
+    'stock_nuevo',
+    'tipo_documento',
+    'id_documento',
+    'documento_referencia',
+    'motivo',
+    'observaciones',
+    'id_almacen',
+    'id_empresa',
+    'id_usuario',
+    'fecha_movimiento'
+];
+
+protected $casts = [
+    'cantidad' => 'decimal:2',
+    'stock_anterior' => 'decimal:2',
+    'stock_nuevo' => 'decimal:2',
+    'fecha_movimiento' => 'datetime',
+];
+```
+</CodeGroup>
+
+### Tipos de Movimiento
+
+<Tabs>
+  <Tab title="Entrada">
+    **Aumenta el stock**
+    
+    - Compras
+    - Ajustes de inventario positivos
+    - Devoluciones de clientes
+    - Anulación de ventas
+  </Tab>
+  <Tab title="Salida">
+    **Disminuye el stock**
+    
+    - Ventas
+    - Ajustes de inventario negativos
+    - Mermas
+    - Devoluciones a proveedores
+  </Tab>
+</Tabs>
+
+### Registro Automático de Movimientos
+
+Cada operación que afecta stock genera un movimiento:
+
+<CodeGroup>
+```php VentasController.php:236-250
+if ($afectaStock) {
+    $productoModel = Producto::find($producto['id_producto']);
+    if ($productoModel) {
+        $stockAnterior = $productoModel->cantidad;
+        $productoModel->decrement('cantidad', $producto['cantidad']);
+        $stockNuevo = $stockAnterior - $producto['cantidad'];
+
+        MovimientoStock::create([
+            'id_producto' => $productoModel->id_producto,
+            'tipo_movimiento' => 'salida',
+            'cantidad' => $producto['cantidad'],
+            'stock_anterior' => $stockAnterior,
+            'stock_nuevo' => $stockNuevo,
+            'tipo_documento' => 'venta',
+            'id_documento' => $venta->id_venta,
+            'documento_referencia' => $venta->serie . '-' . str_pad($venta->numero, 6, '0', STR_PAD_LEFT),
+            'motivo' => 'Venta realizada',
+            'id_almacen' => $productoModel->almacen,
+            'id_empresa' => $user->id_empresa,
+            'id_usuario' => $user->id,
+            'fecha_movimiento' => now(),
+        ]);
+    }
+}
+```
+</CodeGroup>
+
+## Precios Múltiples
+
+Cada producto puede tener diferentes niveles de precio:
+
+<CardGroup cols={2}>
+  <Card title="Precio Regular" icon="tag">
+    `precio`
+    
+    Precio de venta al público
+  </Card>
+  <Card title="Precio Mayor" icon="tags">
+    `precio_mayor`
+    
+    Precio para venta al por mayor
+  </Card>
+  <Card title="Precio Menor" icon="percentage">
+    `precio_menor`
+    
+    Precio con descuento o promoción
+  </Card>
+  <Card title="Precio Unidad" icon="box">
+    `precio_unidad`
+    
+    Precio por unidad individual
+  </Card>
+</CardGroup>
+
+<Info>
+Activar `usar_multiprecio = true` para habilitar la selección de precio en ventas.
+</Info>
+
+## Código de Barras
+
+<CodeGroup>
+```php Producto.php:14
+'cod_barra',
+'usar_barra',
+```
+</CodeGroup>
+
+Si `usar_barra = true`, el sistema puede buscar productos por código de barras en las ventas.
+
+## Categorías y Unidades
+
+### Categorías
+
+Permiten organizar productos en grupos:
+- Electrónicos
+- Alimentos
+- Textiles
+- etc.
+
+### Unidades de Medida
+
+Basado en catálogo SUNAT:
+- `NIU`: Unidad
+- `KGM`: Kilogramo
+- `MTR`: Metro
+- `LTR`: Litro
+- etc.
+
+## Control de Stock
+
+### Stock Mínimo y Máximo
+
+<CodeGroup>
+```php Producto.php:24-25
+'stock_minimo',
+'stock_maximo',
+```
+</CodeGroup>
+
+Estos campos permiten:
+- Alertas de stock bajo
+- Control de reabastecimiento
+- Optimización de inventario
+
+<Note>
+El sistema puede configurarse para alertar cuando `cantidad < stock_minimo`.
+</Note>
+
+## Imagen de Producto
+
+Soporte para imágenes de productos:
+
+<CodeGroup>
+```php ProductoController.php:68-70
+if ($request->hasFile('imagen')) {
+    $data['imagen'] = $this->productoService->subirImagen($request->file('imagen'));
+}
+```
+</CodeGroup>
+
+<Warning>
+Las imágenes deben ser:
+- Formato: JPEG, PNG, JPG, WEBP
+- Tamaño máximo: 2MB
+</Warning>
+
+## Moneda
+
+Los productos pueden tener precios en:
+- `PEN`: Soles peruanos
+- `USD`: Dólares americanos
+
+## Código SUNAT
+
+Campo `codsunat` para el código de producto según catálogo SUNAT (opcional).
+
+## Filtros Disponibles
+
+### Por Almacén
+
+<CodeGroup>
+```php ProductoController.php:28
+$request->get('almacen', '1')
+```
+</CodeGroup>
+
+### Por Búsqueda
+
+Busca en:
+- Código
+- Código de barras
+- Nombre
+- Descripción
+
+### Solo con Stock
+
+<CodeGroup>
+```php ProductoController.php:31
+$request->boolean('solo_con_stock', false)
+```
+</CodeGroup>
+
+Filtra productos con `cantidad > 0`.
+
+## Scopes Útiles
+
+<CodeGroup>
+```php Producto.php:74-88
+public function scopeAlmacen($query, $almacen)
+{
+    return $query->where('almacen', $almacen);
+}
+
+public function scopeActivo($query)
+{
+    return $query->where('estado', '1');
+}
+
+public function scopeEmpresa($query, $idEmpresa)
+{
+    return $query->where('id_empresa', $idEmpresa);
+}
+```
+</CodeGroup>
+
+### Ejemplo de Uso
+
+<CodeGroup>
+```php
+// Productos activos del almacén 1
+$productos = Producto::activo()
+    ->almacen('1')
+    ->empresa($idEmpresa)
+    ->get();
+
+// Productos con stock
+$conStock = Producto::where('cantidad', '>', 0)
+    ->activo()
+    ->get();
+```
+</CodeGroup>
+
+## Fechas de Control
+
+<CardGroup cols={2}>
+  <Card title="Última Salida" icon="arrow-right-from-bracket">
+    `ultima_salida`
+    
+    Fecha de la última venta del producto
+  </Card>
+  <Card title="Último Ingreso" icon="arrow-right-to-bracket">
+    `fecha_ultimo_ingreso`
+    
+    Fecha del último ingreso por compra
+  </Card>
+</CardGroup>
+
+Estas fechas se actualizan automáticamente en cada movimiento.

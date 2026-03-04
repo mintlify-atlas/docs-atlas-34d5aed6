@@ -1,0 +1,347 @@
+---
+title: 'Empresas'
+description: 'Gestión de empresas, logos y cambio de contexto empresarial'
+icon: 'building'
+---
+
+## Información General
+
+Los endpoints de empresas permiten gestionar la información de las empresas registradas en el sistema, incluyendo la carga de logos y el cambio de empresa activa para usuarios administradores.
+
+Todas las operaciones requieren autenticación mediante token Bearer.
+
+## Listar Empresas
+
+<api-endpoint method="GET" path="/api/empresas" />
+
+Obtiene la lista completa de empresas registradas en el sistema, ordenadas por ID descendente.
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id_empresa": 1,
+      "ruc": "20612706702",
+      "razon_social": "COMERCIAL & INDUSTRIAL J.V.C. S.A.C.",
+      "comercial": "J.V.C. SAC",
+      "direccion": "Av. Los Industriales 123",
+      "email": "ventas@jvcsac.com",
+      "telefono": "01-3554701",
+      "telefono2": null,
+      "telefono3": null,
+      "ubigeo": "150101",
+      "distrito": "Lima",
+      "provincia": "Lima",
+      "departamento": "Lima",
+      "user_sol": "MODDATOS",
+      "clave_sol": "moddatos",
+      "logo": "empresasLogos/logo_20612706702_1234567890.png",
+      "igv": "0.18",
+      "modo": "production",
+      "estado": "1",
+      "created_at": "2024-01-15T10:30:00.000000Z",
+      "updated_at": "2024-03-01T14:20:00.000000Z"
+    }
+  ]
+}
+```
+
+## Obtener Empresa
+
+<api-endpoint method="GET" path="/api/empresas/{id}" />
+
+Obtiene los detalles de una empresa específica.
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID de la empresa
+</param-field>
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": {
+    "id_empresa": 1,
+    "ruc": "20612706702",
+    "razon_social": "COMERCIAL & INDUSTRIAL J.V.C. S.A.C.",
+    "comercial": "J.V.C. SAC",
+    "direccion": "Av. Los Industriales 123",
+    "email": "ventas@jvcsac.com",
+    "telefono": "01-3554701",
+    "logo": "empresasLogos/logo_20612706702_1234567890.png",
+    "igv": "0.18",
+    "modo": "production"
+  }
+}
+```
+
+### Errores
+
+<response-field name="404" type="error">
+  Empresa no encontrada
+</response-field>
+
+## Actualizar Empresa
+
+<api-endpoint method="POST" path="/api/empresas/{id}" />
+
+<info>
+  Se usa POST en lugar de PUT/PATCH para soportar FormData al subir logos.
+</info>
+
+Actualiza los datos de una empresa, incluyendo la posibilidad de subir un nuevo logo.
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID de la empresa a actualizar
+</param-field>
+
+### Parámetros del Body (FormData)
+
+<param-field body="ruc" type="string" required>
+  RUC de la empresa (11 dígitos, debe ser único)
+</param-field>
+
+<param-field body="razon_social" type="string" required>
+  Razón social de la empresa (máx. 245 caracteres)
+</param-field>
+
+<param-field body="comercial" type="string" required>
+  Nombre comercial (máx. 245 caracteres)
+</param-field>
+
+<param-field body="direccion" type="string">
+  Dirección fiscal (máx. 245 caracteres)
+</param-field>
+
+<param-field body="email" type="string">
+  Email de contacto (formato válido)
+</param-field>
+
+<param-field body="telefono" type="string">
+  Teléfono principal (máx. 30 caracteres)
+</param-field>
+
+<param-field body="telefono2" type="string">
+  Teléfono secundario (máx. 30 caracteres)
+</param-field>
+
+<param-field body="telefono3" type="string">
+  Teléfono terciario (máx. 30 caracteres)
+</param-field>
+
+<param-field body="ubigeo" type="string">
+  Código de ubigeo (6 dígitos)
+</param-field>
+
+<param-field body="distrito" type="string">
+  Nombre del distrito (máx. 45 caracteres)
+</param-field>
+
+<param-field body="provincia" type="string">
+  Nombre de la provincia (máx. 45 caracteres)
+</param-field>
+
+<param-field body="departamento" type="string">
+  Nombre del departamento (máx. 45 caracteres)
+</param-field>
+
+<param-field body="user_sol" type="string">
+  Usuario SOL de SUNAT (máx. 45 caracteres)
+</param-field>
+
+<param-field body="clave_sol" type="string">
+  Clave SOL de SUNAT (máx. 45 caracteres)
+</param-field>
+
+<param-field body="igv" type="decimal">
+  Tasa de IGV (valor entre 0 y 1, ej: 0.18 para 18%)
+</param-field>
+
+<param-field body="modo" type="string">
+  Modo de operación: `production` o `test`
+</param-field>
+
+<param-field body="logo" type="file">
+  Archivo de imagen del logo (jpeg, png, jpg, gif, webp, máx. 2MB)
+</param-field>
+
+### Ejemplo de Solicitud
+
+```javascript
+const formData = new FormData();
+formData.append('ruc', '20612706702');
+formData.append('razon_social', 'COMERCIAL & INDUSTRIAL J.V.C. S.A.C.');
+formData.append('comercial', 'J.V.C. SAC');
+formData.append('direccion', 'Av. Los Industriales 123');
+formData.append('email', 'ventas@jvcsac.com');
+formData.append('telefono', '01-3554701');
+formData.append('igv', '0.18');
+formData.append('modo', 'production');
+formData.append('logo', logoFile); // File object
+
+const response = await fetch('/api/empresas/1', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`
+  },
+  body: formData
+});
+```
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Empresa actualizada exitosamente",
+  "data": {
+    "id_empresa": 1,
+    "ruc": "20612706702",
+    "razon_social": "COMERCIAL & INDUSTRIAL J.V.C. S.A.C.",
+    "comercial": "J.V.C. SAC",
+    "logo": "empresasLogos/logo_20612706702_1709304821.png",
+    "updated_at": "2024-03-01T14:20:21.000000Z"
+  }
+}
+```
+
+### Validación
+
+<warning>
+  El RUC debe tener exactamente 11 dígitos y ser único en el sistema (excepto para la empresa que se está actualizando).
+</warning>
+
+## Eliminar Logo
+
+<api-endpoint method="DELETE" path="/api/empresas/{id}/logo" />
+
+Elimina el logo de una empresa del sistema de archivos y de la base de datos.
+
+### Parámetros de Ruta
+
+<param-field path="id" type="integer" required>
+  ID de la empresa
+</param-field>
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "message": "Logo eliminado exitosamente"
+}
+```
+
+## Cambiar Empresa Activa
+
+<api-endpoint method="POST" path="/api/switch-empresa" />
+
+<info>
+  Esta funcionalidad está disponible solo para usuarios administradores (rol_id = 1).
+</info>
+
+Cambia el contexto de empresa activa para el usuario autenticado. Todas las consultas posteriores se realizarán en el contexto de la nueva empresa.
+
+### Parámetros del Body
+
+<param-field body="id_empresa" type="integer" required>
+  ID de la empresa a la que se desea cambiar
+</param-field>
+
+### Ejemplo de Solicitud
+
+```json
+{
+  "id_empresa": 2
+}
+```
+
+### Respuesta Exitosa
+
+```json
+{
+  "success": true,
+  "message": "Empresa cambiada exitosamente",
+  "id_empresa": 2
+}
+```
+
+### Errores
+
+<response-field name="403" type="error">
+  No tiene permisos para cambiar de empresa (solo administradores)
+</response-field>
+
+<response-field name="404" type="error">
+  Empresa no encontrada o inactiva
+</response-field>
+
+## Consultas con Scope de Empresa
+
+<tip>
+  Todos los modelos principales del sistema (Ventas, Productos, Clientes, etc.) están asociados a una empresa mediante `id_empresa`. Las consultas se filtran automáticamente según la empresa activa del usuario autenticado.
+</tip>
+
+### Ejemplo de Query Scope
+
+```php
+// En un controlador Laravel
+$ventas = Venta::where('id_empresa', $user->id_empresa)->get();
+
+// O usando scope local
+$productos = Producto::porEmpresa($empresaId)->get();
+```
+
+## Modelo de Datos
+
+### Tabla: empresas
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| id_empresa | INT | Primary key |
+| ruc | VARCHAR(11) | RUC único de la empresa |
+| razon_social | VARCHAR(245) | Razón social |
+| comercial | VARCHAR(245) | Nombre comercial |
+| direccion | VARCHAR(245) | Dirección fiscal |
+| email | VARCHAR(145) | Email de contacto |
+| telefono | VARCHAR(30) | Teléfono principal |
+| telefono2 | VARCHAR(30) | Teléfono secundario |
+| telefono3 | VARCHAR(30) | Teléfono terciario |
+| ubigeo | VARCHAR(6) | Código de ubigeo SUNAT |
+| distrito | VARCHAR(45) | Distrito |
+| provincia | VARCHAR(45) | Provincia |
+| departamento | VARCHAR(45) | Departamento |
+| user_sol | VARCHAR(45) | Usuario SOL SUNAT |
+| clave_sol | VARCHAR(45) | Clave SOL SUNAT |
+| logo | VARCHAR(255) | Ruta del archivo de logo |
+| igv | DECIMAL(3,2) | Tasa de IGV (0.18) |
+| modo | ENUM | production, test |
+| estado | CHAR(1) | 1=Activo, 0=Inactivo |
+| created_at | TIMESTAMP | Fecha de creación |
+| updated_at | TIMESTAMP | Fecha de actualización |
+
+## Configuración SUNAT
+
+### Ambiente de Pruebas (Beta)
+
+Para pruebas, SUNAT proporciona credenciales genéricas:
+
+- **RUC**: 20000000001
+- **Usuario SOL**: MODDATOS
+- **Clave SOL**: moddatos
+
+### Ambiente de Producción
+
+En producción, usa las credenciales SOL reales proporcionadas por SUNAT para tu empresa.
+
+<warning>
+  Nunca expongas credenciales SOL de producción en el código frontend. Siempre deben manejarse en el backend.
+</warning>

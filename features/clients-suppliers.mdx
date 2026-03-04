@@ -1,0 +1,660 @@
+---
+title: 'Clientes y Proveedores'
+description: 'Gestión de clientes y proveedores con información fiscal y de contacto'
+icon: 'users'
+---
+
+## Descripción General
+
+El sistema permite gestionar tanto clientes como proveedores, manteniendo información de contacto, ubicación y vinculación con transacciones (ventas y compras).
+
+## Gestión de Clientes
+
+### Listar Clientes
+
+Obtiene todos los clientes con información agregada de ventas.
+
+<CodeGroup>
+```php ClienteController.php:16-74
+public function index(Request $request)
+{
+    try {
+        $query = Cliente::with('empresa:id_empresa,comercial,ruc')
+            ->select(
+                'id_cliente',
+                'documento',
+                'datos',
+                'direccion',
+                'direccion2',
+                'telefono',
+                'telefono2',
+                'email',
+                'id_empresa',
+                'ubigeo',
+                'departamento',
+                'provincia',
+                'distrito',
+                'created_at',
+                'updated_at'
+            )
+            ->addSelect([
+                'ultima_venta' => DB::table('ventas')
+                    ->selectRaw('MAX(fecha_emision)')
+                    ->whereColumn('ventas.id_cliente', 'clientes.id_cliente')
+                    ->whereNotIn('ventas.estado', ['2', 'A']),
+                'total_venta' => DB::table('ventas')
+                    ->selectRaw('COALESCE(SUM(total), 0)')
+                    ->whereColumn('ventas.id_cliente', 'clientes.id_cliente')
+                    ->whereNotIn('ventas.estado', ['2', 'A']),
+            ]);
+
+        // Filtrar por empresa del usuario
+        $user = $request->user();
+        if ($user && $user->id_empresa) {
+            $query->byEmpresa($user->id_empresa);
+        }
+
+        // Buscar si se proporciona término de búsqueda
+        if ($request->has('search')) {
+            $query->search($request->search);
+        }
+
+        $clientes = $query->orderBy('created_at', 'desc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $clientes
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener clientes',
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Info>
+**Datos Agregados**
+
+El listado incluye:
+- `ultima_venta`: Fecha de la última venta realizada al cliente
+- `total_venta`: Suma total de todas las ventas (excluyendo anuladas)
+</Info>
+
+### Crear Cliente
+
+<CodeGroup>
+```php ClienteController.php:79-131
+public function store(Request $request)
+{
+    try {
+        $validated = $request->validate([
+            'documento' => [
+                'required',
+                'string',
+                'max:11',
+                Rule::unique('clientes')->where(function ($query) use ($request) {
+                    return $query->where('id_empresa', $request->id_empresa);
+                })
+            ],
+            'datos' => 'required|string|max:245',
+            'direccion' => 'nullable|string|max:245',
+            'direccion2' => 'nullable|string|max:220',
+            'telefono' => 'nullable|string|max:200',
+            'telefono2' => 'nullable|string|max:200',
+            'email' => 'nullable|email|max:200',
+            'id_empresa' => 'required|exists:empresas,id_empresa',
+            'ubigeo' => 'nullable|string|max:6',
+            'departamento' => 'nullable|string|max:100',
+            'provincia' => 'nullable|string|max:100',
+            'distrito' => 'nullable|string|max:100',
+        ]);
+
+        $cliente = Cliente::create($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cliente creado exitosamente',
+            'data' => $cliente->load('empresa:id_empresa,comercial,ruc')
+        ], 201);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al crear cliente',
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Warning>
+**Unicidad de Documento**
+
+El `documento` debe ser único por empresa. No se pueden tener dos clientes con el mismo documento en la misma empresa.
+</Warning>
+
+### Buscar Cliente por Documento
+
+<CodeGroup>
+```php ClienteController.php:254-285
+public function buscarPorDocumento(Request $request)
+{
+    try {
+        $request->validate([
+            'documento' => 'required|string',
+            'empresa_id' => 'required|exists:empresas,id_empresa'
+        ]);
+
+        $cliente = Cliente::where('documento', $request->documento)
+            ->where('id_empresa', $request->empresa_id)
+            ->with('empresa:id_empresa,comercial,ruc')
+            ->first();
+
+        if (!$cliente) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cliente no encontrado'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $cliente
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al buscar cliente',
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+### Eliminar Cliente
+
+Validación de integridad referencial antes de eliminar.
+
+<CodeGroup>
+```php ClienteController.php:219-249
+public function destroy($id)
+{
+    try {
+        $cliente = Cliente::findOrFail($id);
+
+        if ($cliente->ventas()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar el cliente porque tiene ventas asociadas'
+            ], 409);
+        }
+
+        $cliente->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cliente eliminado exitosamente'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al eliminar cliente',
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Note>
+No se puede eliminar un cliente que tenga ventas asociadas. Esto previene pérdida de integridad de datos.
+</Note>
+
+## Modelo Cliente
+
+<CodeGroup>
+```php Cliente.php:12-35
+protected $table = 'clientes';
+protected $primaryKey = 'id_cliente';
+
+protected $fillable = [
+    'documento',
+    'datos',
+    'direccion',
+    'direccion2',
+    'telefono',
+    'telefono2',
+    'email',
+    'id_empresa',
+    'ultima_venta',
+    'total_venta',
+    'ubigeo',
+    'departamento',
+    'provincia',
+    'distrito',
+];
+
+protected $casts = [
+    'ultima_venta' => 'datetime',
+    'total_venta' => 'decimal:2',
+];
+```
+</CodeGroup>
+
+### Relaciones del Cliente
+
+<CodeGroup>
+```php Cliente.php:40-51
+public function empresa()
+{
+    return $this->belongsTo(Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+public function ventas()
+{
+    return $this->hasMany(Venta::class, 'id_cliente', 'id_cliente');
+}
+```
+</CodeGroup>
+
+### Scopes del Cliente
+
+<CodeGroup>
+```php Cliente.php:56-72
+public function scopeSearch($query, $search)
+{
+    return $query->where(function ($q) use ($search) {
+        $q->where('documento', 'like', "%{$search}%")
+            ->orWhere('datos', 'like', "%{$search}%")
+            ->orWhere('email', 'like', "%{$search}%")
+            ->orWhere('telefono', 'like', "%{$search}%");
+    });
+}
+
+public function scopeByEmpresa($query, $empresaId)
+{
+    return $query->where('id_empresa', $empresaId);
+}
+```
+</CodeGroup>
+
+## Gestión de Proveedores
+
+### Listar Proveedores
+
+<CodeGroup>
+```php ProveedorController.php:16-42
+public function index(Request $request)
+{
+    try {
+        $user = $request->user();
+        $busqueda = $request->get('busqueda', '');
+        
+        $query = Proveedor::where('id_empresa', $user->id_empresa)
+            ->where('estado', 1);
+        
+        if (!empty($busqueda)) {
+            $query->buscar($busqueda);
+        }
+        
+        $proveedores = $query->orderBy('razon_social', 'asc')->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => $proveedores
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener proveedores: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+### Crear Proveedor
+
+<CodeGroup>
+```php ProveedorController.php:67-112
+public function store(Request $request)
+{
+    try {
+        $user = $request->user();
+        
+        $validator = Validator::make($request->all(), [
+            'ruc' => [
+                'required', 'string', 'max:11',
+                Rule::unique('proveedores', 'ruc')->where('id_empresa', $user->id_empresa),
+            ],
+            'razon_social' => 'required|string|max:200',
+            'direccion' => 'nullable|string|max:100',
+            'telefono' => 'nullable|string|max:100',
+            'email' => 'nullable|email|max:150',
+            'departamento' => 'nullable|string|max:100',
+            'provincia' => 'nullable|string|max:100',
+            'distrito' => 'nullable|string|max:100',
+            'ubigeo' => 'nullable|string|max:6',
+        ]);
+
+        $data = $request->all();
+        $data['id_empresa'] = $user->id_empresa;
+        $data['estado'] = 1;
+        
+        $proveedor = Proveedor::create($data);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Proveedor creado exitosamente',
+            'data' => $proveedor
+        ], 201);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al crear proveedor: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Info>
+Los proveedores usan **RUC** (11 dígitos) como identificación fiscal, ya que solo pueden ser empresas formales.
+</Info>
+
+### Buscar Proveedor por RUC
+
+<CodeGroup>
+```php ProveedorController.php:181-219
+public function buscarPorRuc(Request $request)
+{
+    try {
+        $ruc = $request->get('ruc');
+        $user = $request->user();
+        
+        if (empty($ruc)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'RUC es requerido'
+            ], 422);
+        }
+        
+        $proveedor = Proveedor::where('ruc', $ruc)
+            ->where('id_empresa', $user->id_empresa)
+            ->where('estado', 1)
+            ->first();
+        
+        if ($proveedor) {
+            return response()->json([
+                'success' => true,
+                'data' => $proveedor,
+                'existe' => true
+            ]);
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => null,
+            'existe' => false,
+            'message' => 'Proveedor no encontrado'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al buscar proveedor: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+### Eliminar Proveedor (Soft Delete)
+
+<CodeGroup>
+```php ProveedorController.php:160-176
+public function destroy($id)
+{
+    try {
+        $proveedor = Proveedor::findOrFail($id);
+        $proveedor->update(['estado' => 0]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Proveedor eliminado exitosamente'
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al eliminar proveedor: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Note>
+La eliminación de proveedores es un **soft delete**: solo cambia `estado = 0` en lugar de eliminar el registro.
+</Note>
+
+### Estadísticas de Proveedores
+
+<CodeGroup>
+```php ProveedorController.php:224-260
+public function estadisticas(Request $request)
+{
+    try {
+        $user = $request->user();
+        
+        $total = Proveedor::where('id_empresa', $user->id_empresa)
+            ->where('estado', 1)
+            ->count();
+        
+        $conCompras = DB::table('proveedores as p')
+            ->join('compras as c', 'p.proveedor_id', '=', 'c.proveedor_id')
+            ->where('p.id_empresa', $user->id_empresa)
+            ->where('p.estado', 1)
+            ->distinct('p.proveedor_id')
+            ->count();
+        
+        $sinCompras = $total - $conCompras;
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => $total,
+                'con_compras' => $conCompras,
+                'sin_compras' => $sinCompras,
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total' => 0,
+                'con_compras' => 0,
+                'sin_compras' => 0,
+            ]
+        ]);
+    }
+}
+```
+</CodeGroup>
+
+### Detalles Completos de Proveedor
+
+Incluye información de compras asociadas.
+
+<CodeGroup>
+```php ProveedorController.php:265-309
+public function getDetalles(Request $request, $id)
+{
+    try {
+        $user = $request->user();
+        $proveedor = Proveedor::where('id_empresa', $user->id_empresa)
+            ->findOrFail($id);
+        
+        // Estadísticas básicas
+        $totalComprasCount = $proveedor->compras()->count();
+        
+        $montoTotalPEN = $proveedor->compras()
+            ->where('moneda', 'PEN')
+            ->sum('total');
+            
+        $montoTotalUSD = $proveedor->compras()
+            ->where('moneda', 'USD')
+            ->sum('total');
+        
+        // Últimas 10 compras
+        $ultimasCompras = $proveedor->compras()
+            ->orderBy('fecha_emision', 'desc')
+            ->take(10)
+            ->get();
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'proveedor' => $proveedor,
+                'stats' => [
+                    'total_count' => $totalComprasCount,
+                    'total_monto_pen' => $montoTotalPEN,
+                    'total_monto_usd' => $montoTotalUSD,
+                ],
+                'compras' => $ultimasCompras
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al obtener detalles: ' . $e->getMessage()
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+## Modelo Proveedor
+
+<CodeGroup>
+```php Proveedor.php:8-31
+protected $table = 'proveedores';
+protected $primaryKey = 'proveedor_id';
+
+protected $fillable = [
+    'ruc',
+    'razon_social',
+    'direccion',
+    'telefono',
+    'email',
+    'id_empresa',
+    'departamento',
+    'provincia',
+    'distrito',
+    'ubigeo',
+    'estado',
+];
+
+protected $casts = [
+    'estado' => 'integer',
+    'created_at' => 'datetime',
+    'updated_at' => 'datetime',
+];
+```
+</CodeGroup>
+
+### Relaciones del Proveedor
+
+<CodeGroup>
+```php Proveedor.php:36-47
+public function empresa()
+{
+    return $this->belongsTo(Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+public function compras()
+{
+    return $this->hasMany(Compra::class, 'proveedor_id', 'proveedor_id');
+}
+```
+</CodeGroup>
+
+### Scopes del Proveedor
+
+<CodeGroup>
+```php Proveedor.php:52-69
+public function scopeActivos($query)
+{
+    return $query->where('estado', 1);
+}
+
+public function scopeBuscar($query, $termino)
+{
+    return $query->where(function($q) use ($termino) {
+        $q->where('ruc', 'like', "%$termino%")
+          ->orWhere('razon_social', 'like', "%$termino%")
+          ->orWhere('direccion', 'like', "%$termino%")
+          ->orWhere('telefono', 'like', "%$termino%")
+          ->orWhere('email', 'like', "%$termino%");
+    });
+}
+```
+</CodeGroup>
+
+### Atributos Computados
+
+<CodeGroup>
+```php Proveedor.php:74-93
+public function getUbicacionCompletaAttribute()
+{
+    $partes = array_filter([
+        $this->distrito,
+        $this->provincia,
+        $this->departamento
+    ]);
+    
+    return !empty($partes) ? implode(', ', $partes) : null;
+}
+
+public function getNombreCortoAttribute()
+{
+    return strlen($this->razon_social) > 50 
+        ? substr($this->razon_social, 0, 47) . '...' 
+        : $this->razon_social;
+}
+```
+</CodeGroup>
+
+## Ubicación Geográfica
+
+Tanto clientes como proveedores almacenan información de ubicación:
+
+<CardGroup cols={2}>
+  <Card title="Ubigeo" icon="map-pin">
+    Código de 6 dígitos según catálogo INEI
+    
+    Identifica: Departamento + Provincia + Distrito
+  </Card>
+  <Card title="Campos Separados" icon="location-dot">
+    `departamento`, `provincia`, `distrito`
+    
+    Nombres legibles de la ubicación
+  </Card>
+</CardGroup>
+
+## Diferencias Clave
+
+<AccordionGroup>
+  <Accordion title="Clientes vs Proveedores">
+    ### Clientes
+    - Pueden tener DNI (8 dígitos) o RUC (11 dígitos)
+    - Se asocian a **ventas**
+    - Campo `datos` para nombre o razón social
+    - Permiten eliminación solo si no tienen ventas
+    
+    ### Proveedores
+    - Solo RUC (11 dígitos)
+    - Se asocian a **compras**
+    - Campo `razon_social` para nombre empresarial
+    - Soft delete (estado = 0)
+  </Accordion>
+</AccordionGroup>

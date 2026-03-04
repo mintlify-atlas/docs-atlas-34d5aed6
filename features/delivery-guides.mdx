@@ -1,0 +1,488 @@
+---
+title: 'Guías de Remisión Electrónicas'
+description: 'Emisión y gestión de guías de remisión electrónicas (GRE) para el traslado de mercancías'
+icon: 'truck'
+---
+
+## Descripción General
+
+Las Guías de Remisión Electrónicas (GRE) son documentos que sustentan el traslado de bienes. El sistema utiliza la API REST de SUNAT para su emisión y validación.
+
+<Warning>
+**Flujo Asíncrono con SUNAT**
+
+A diferencia de facturas/boletas, las guías de remisión usan un flujo asíncrono:
+1. Se envía la guía y SUNAT retorna un **ticket**
+2. Luego se consulta el ticket para obtener el CDR
+</Warning>
+
+## Funcionalidades Principales
+
+### Listar Guías de Remisión
+
+<CodeGroup>
+```php GuiaRemisionController.php:19-29
+public function index(Request $request): JsonResponse
+{
+    $idEmpresa = $request->user()->id_empresa;
+
+    $guias = GuiaRemision::with(['venta.cliente', 'detalles'])
+        ->where('id_empresa', $idEmpresa)
+        ->orderBy('id', 'desc')
+        ->paginate(15);
+
+    return response()->json($guias);
+}
+```
+</CodeGroup>
+
+### Crear Guía de Remisión
+
+La creación de guías incluye validaciones específicas según el tipo de transporte.
+
+<CodeGroup>
+```php GuiaRemisionController.php:40-205
+public function store(Request $request): JsonResponse
+{
+    $rules = [
+        'id_venta' => 'nullable|exists:ventas,id_venta',
+        'destinatario_tipo_doc' => 'required|in:1,6',
+        'destinatario_documento' => 'required|string|max:15',
+        'destinatario_nombre' => 'required|string|max:255',
+        'destinatario_direccion' => 'required|string|max:500',
+        'destinatario_ubigeo' => 'nullable|string|max:6',
+        'motivo_traslado' => 'required|string|max:2',
+        'descripcion_motivo' => 'nullable|string|max:255',
+        'mod_transporte' => 'required|in:01,02',
+        'fecha_traslado' => 'required|date',
+        'peso_total' => 'required|numeric|min:0.001',
+        'detalles' => 'required|array|min:1',
+        'detalles.*.descripcion' => 'required|string',
+        'detalles.*.cantidad' => 'required|numeric|min:0.001',
+    ];
+
+    // Transporte público: transportista requerido
+    if ($request->mod_transporte === '01') {
+        $rules['transportista_tipo_doc'] = 'required|string|max:1';
+        $rules['transportista_documento'] = 'required|string|max:15';
+        $rules['transportista_nombre'] = 'required|string|max:255';
+    }
+
+    // Transporte privado: conductor y vehículo requeridos
+    if ($request->mod_transporte === '02') {
+        if (!$request->boolean('vehiculo_m1l')) {
+            $rules['conductor_tipo_doc'] = 'required|string|max:1';
+            $rules['conductor_documento'] = 'required|string|max:15';
+            $rules['conductor_nombres'] = 'required|string|max:255';
+            $rules['conductor_apellidos'] = 'required|string|max:255';
+            $rules['conductor_licencia'] = 'required|string|max:20';
+            $rules['vehiculo_placa'] = 'required|string|max:10';
+        }
+    }
+
+    $request->validate($rules);
+
+    return DB::transaction(function () use ($request) {
+        $idEmpresa = $request->user()->id_empresa;
+        $empresa = Empresa::findOrFail($idEmpresa);
+
+        $ultimoNumero = GuiaRemision::where('serie', 'T001')
+            ->where('id_empresa', $idEmpresa)
+            ->max('numero') ?? 0;
+
+        $guia = GuiaRemision::create([
+            'id_empresa' => $idEmpresa,
+            'id_usuario' => $request->user()->id,
+            'id_venta' => $request->id_venta,
+            'serie' => 'T001',
+            'numero' => $ultimoNumero + 1,
+            'fecha_emision' => now()->toDateString(),
+            'destinatario_tipo_doc' => $request->destinatario_tipo_doc,
+            'destinatario_documento' => $request->destinatario_documento,
+            'destinatario_nombre' => $request->destinatario_nombre,
+            'motivo_traslado' => $request->motivo_traslado,
+            'mod_transporte' => $request->mod_transporte,
+            'fecha_traslado' => $request->fecha_traslado,
+            'peso_total' => $request->peso_total,
+            'ubigeo_partida' => $request->ubigeo_partida ?: $empresa->ubigeo,
+            'dir_partida' => $request->dir_partida ?: $empresa->direccion,
+            'ubigeo_llegada' => $request->destinatario_ubigeo ?: '150101',
+            'dir_llegada' => $request->destinatario_direccion,
+            'transportista_documento' => $request->transportista_documento,
+            'transportista_nombre' => $request->transportista_nombre,
+            'conductor_documento' => $request->conductor_documento,
+            'conductor_nombres' => $request->conductor_nombres,
+            'conductor_apellidos' => $request->conductor_apellidos,
+            'conductor_licencia' => $request->conductor_licencia,
+            'vehiculo_placa' => $request->vehiculo_placa,
+            'vehiculo_m1l' => $request->boolean('vehiculo_m1l'),
+            'estado' => 'pendiente',
+        ]);
+
+        foreach ($request->detalles as $detalle) {
+            GuiaRemisionDetalle::create([
+                'id_guia' => $guia->id,
+                'id_producto' => $detalle['id_producto'] ?? null,
+                'codigo' => $detalle['codigo'] ?? null,
+                'descripcion' => $detalle['descripcion'],
+                'cantidad' => $detalle['cantidad'],
+                'unidad' => $detalle['unidad'] ?? 'NIU',
+            ]);
+        }
+
+        $resultado = $this->sunatService->generarGuiaRemisionXml($guia);
+
+        return response()->json([
+            'success' => true,
+            'data' => $guia,
+            'xml' => $resultado,
+        ], 201);
+    });
+}
+```
+</CodeGroup>
+
+## Modalidades de Transporte
+
+<Tabs>
+  <Tab title="Transporte Público (01)">
+    ### Campos Requeridos
+    
+    - `transportista_tipo_doc`: Tipo de documento del transportista
+    - `transportista_documento`: RUC del transportista
+    - `transportista_nombre`: Razón social del transportista
+    - `transportista_nro_mtc`: Número de registro MTC (opcional)
+    
+    <Note>
+    En transporte público, el conductor y vehículo son opcionales ya que son responsabilidad del transportista.
+    </Note>
+  </Tab>
+  <Tab title="Transporte Privado (02)">
+    ### Campos Requeridos
+    
+    **Conductor:**
+    - `conductor_tipo_doc`: Tipo de documento (1=DNI)
+    - `conductor_documento`: Número de DNI
+    - `conductor_nombres`: Nombres del conductor
+    - `conductor_apellidos`: Apellidos del conductor
+    - `conductor_licencia`: Número de licencia de conducir
+    
+    **Vehículo:**
+    - `vehiculo_placa`: Placa del vehículo
+    - `vehiculo_m1l`: Si es categoría M1 o L (opcional)
+    
+    <Warning>
+    Si el vehículo es categoría **M1 o L**, todos los campos del conductor y placa son opcionales según normativa SUNAT.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Envío a SUNAT
+
+El envío retorna un ticket que debe consultarse posteriormente.
+
+<CodeGroup>
+```php GuiaRemisionController.php:207-234
+public function enviar(int $id, Request $request): JsonResponse
+{
+    $guia = GuiaRemision::where('id_empresa', $request->user()->id_empresa)
+        ->findOrFail($id);
+
+    if (!$guia->nombre_xml) {
+        return response()->json([
+            'success' => false,
+            'message' => 'La guía no tiene XML generado.',
+        ], 400);
+    }
+
+    try {
+        $resultado = $this->sunatService->enviarGuiaRemision($guia);
+        return response()->json($resultado);
+    } catch (\Exception $e) {
+        Log::error('SUNAT - Error al enviar guía de remisión', [
+            'guia_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al enviar: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+## Consultar Ticket
+
+Después del envío, se debe consultar el ticket para obtener la respuesta de SUNAT.
+
+<CodeGroup>
+```php GuiaRemisionController.php:236-255
+public function consultarTicket(int $id, Request $request): JsonResponse
+{
+    $guia = GuiaRemision::where('id_empresa', $request->user()->id_empresa)
+        ->findOrFail($id);
+
+    try {
+        $resultado = $this->sunatService->consultarTicketGuia($guia);
+        return response()->json($resultado);
+    } catch (\Exception $e) {
+        Log::error('SUNAT - Error al consultar ticket guía', [
+            'guia_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Error al consultar: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+```
+</CodeGroup>
+
+<Steps>
+  <Step title="Enviar Guía">
+    Se envía el XML a SUNAT y se recibe un `ticket_sunat`
+  </Step>
+  <Step title="Esperar Procesamiento">
+    SUNAT procesa la guía (puede tomar unos segundos)
+  </Step>
+  <Step title="Consultar Ticket">
+    Se consulta el ticket para obtener el CDR con el resultado
+  </Step>
+</Steps>
+
+## Motivos de Traslado
+
+### Obtener Lista de Motivos
+
+<CodeGroup>
+```php GuiaRemisionController.php:280-287
+public function motivos(): JsonResponse
+{
+    $motivos = MotivoTraslado::where('estado', true)
+        ->orderBy('codigo')
+        ->get();
+
+    return response()->json($motivos);
+}
+```
+</CodeGroup>
+
+### Códigos Comunes (Catálogo 20 SUNAT)
+
+<CardGroup cols={2}>
+  <Card title="01 - Venta" icon="shopping-cart">
+    Traslado por venta de mercadería
+  </Card>
+  <Card title="02 - Compra" icon="bag-shopping">
+    Traslado por compra de mercadería
+  </Card>
+  <Card title="04 - Traslado entre establecimientos" icon="warehouse">
+    Traslado entre almacenes de la misma empresa
+  </Card>
+  <Card title="08 - Importación" icon="ship">
+    Traslado por importación
+  </Card>
+  <Card title="09 - Exportación" icon="plane-departure">
+    Traslado por exportación
+  </Card>
+  <Card title="13 - Otros" icon="ellipsis">
+    Otros motivos de traslado
+  </Card>
+</CardGroup>
+
+## Ubigeos
+
+Sistema de búsqueda de ubigeos INEI para direcciones.
+
+<CodeGroup>
+```php GuiaRemisionController.php:347-362
+public function ubigeos(Request $request): JsonResponse
+{
+    $search = $request->get('q', '');
+
+    $query = DB::table('ubigeo_inei');
+
+    if ($search) {
+        $query->where('nombre', 'like', "%{$search}%")
+            ->orWhere('id_ubigeo', 'like', "%{$search}%");
+    }
+
+    $ubigeos = $query->limit(20)->get();
+
+    return response()->json($ubigeos);
+}
+```
+</CodeGroup>
+
+<Info>
+Los ubigeos son códigos de 6 dígitos que identifican departamento, provincia y distrito según el estándar INEI.
+</Info>
+
+## Obtener Datos de Empresa
+
+Endpoint para prellenar datos del remitente.
+
+<CodeGroup>
+```php GuiaRemisionController.php:329-345
+public function empresaActiva(Request $request): JsonResponse
+{
+    $empresa = Empresa::find($request->user()->id_empresa);
+
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'razon_social' => $empresa->razon_social ?? '',
+            'ruc' => $empresa->ruc ?? '',
+            'direccion' => $empresa->direccion ?? '',
+            'ubigeo' => $empresa->ubigeo ?? '',
+            'departamento' => $empresa->departamento ?? '',
+            'provincia' => $empresa->provincia ?? '',
+            'distrito' => $empresa->distrito ?? '',
+        ],
+    ]);
+}
+```
+</CodeGroup>
+
+## Modelo de Datos
+
+### GuiaRemision Model
+
+<CodeGroup>
+```php GuiaRemision.php:11-60
+protected $table = 'guia_remision';
+
+protected $fillable = [
+    'id_empresa',
+    'id_usuario',
+    'id_venta',
+    'serie',
+    'numero',
+    'fecha_emision',
+    'destinatario_tipo_doc',
+    'destinatario_documento',
+    'destinatario_nombre',
+    'motivo_traslado',
+    'descripcion_motivo',
+    'mod_transporte',
+    'fecha_traslado',
+    'peso_total',
+    'und_peso_total',
+    'ubigeo_partida',
+    'dir_partida',
+    'ubigeo_llegada',
+    'dir_llegada',
+    'transportista_tipo_doc',
+    'transportista_documento',
+    'transportista_nombre',
+    'transportista_nro_mtc',
+    'conductor_tipo_doc',
+    'conductor_documento',
+    'conductor_nombres',
+    'conductor_apellidos',
+    'conductor_licencia',
+    'vehiculo_placa',
+    'vehiculo_m1l',
+    'observaciones',
+    'estado',
+    'nombre_xml',
+    'xml_url',
+    'cdr_url',
+    'ticket_sunat',
+];
+
+protected $casts = [
+    'fecha_emision' => 'date',
+    'fecha_traslado' => 'date',
+    'peso_total' => 'decimal:3',
+];
+```
+</CodeGroup>
+
+### Relaciones
+
+<CodeGroup>
+```php GuiaRemision.php:62-86
+public function empresa(): BelongsTo
+{
+    return $this->belongsTo(Empresa::class, 'id_empresa', 'id_empresa');
+}
+
+public function venta(): BelongsTo
+{
+    return $this->belongsTo(Venta::class, 'id_venta', 'id_venta');
+}
+
+public function detalles(): HasMany
+{
+    return $this->hasMany(GuiaRemisionDetalle::class, 'id_guia', 'id');
+}
+
+public function getNumeroCompletoAttribute(): string
+{
+    return $this->serie . '-' . str_pad($this->numero, 6, '0', STR_PAD_LEFT);
+}
+```
+</CodeGroup>
+
+## Próximo Número
+
+<CodeGroup>
+```php GuiaRemisionController.php:257-278
+public function proximoNumero(Request $request): JsonResponse
+{
+    $idEmpresa = $request->user()->id_empresa;
+    $serie = 'T001';
+
+    $ultimoNumero = GuiaRemision::where('serie', $serie)
+        ->where('id_empresa', $idEmpresa)
+        ->max('numero') ?? 0;
+
+    $numeroBase = DB::table('documentos_empresas')
+        ->where('id_empresa', $idEmpresa)
+        ->where('serie', $serie)
+        ->value('numero') ?? 0;
+
+    $proximoNumero = max($ultimoNumero, $numeroBase) + 1;
+
+    return response()->json([
+        'success' => true,
+        'numero' => $proximoNumero,
+        'numero_completo' => $serie . '-' . str_pad($proximoNumero, 8, '0', STR_PAD_LEFT),
+    ]);
+}
+```
+</CodeGroup>
+
+<Note>
+Las guías de remisión usan la serie **T001** por defecto y formato de 8 dígitos.
+</Note>
+
+## Descarga de Archivos
+
+### Descargar CDR
+
+<CodeGroup>
+```php GuiaRemisionController.php:289-306
+public function cdr(int $id, Request $request)
+{
+    $guia = GuiaRemision::where('id_empresa', $request->user()->id_empresa)
+        ->findOrFail($id);
+
+    if (!$guia->cdr_url) {
+        return response()->json(['message' => 'CDR no disponible'], 404);
+    }
+
+    $cdrPath = storage_path("app/{$guia->cdr_url}");
+    if (!file_exists($cdrPath)) {
+        return response()->json(['message' => 'Archivo CDR no encontrado'], 404);
+    }
+
+    $filename = "R-{$guia->serie}-{$guia->numero}.zip";
+
+    return response()->download($cdrPath, $filename);
+}
+```
+</CodeGroup>

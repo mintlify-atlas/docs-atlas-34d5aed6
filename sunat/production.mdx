@@ -1,0 +1,406 @@
+---
+title: Ambiente de Producción
+description: Configura y pasa a producción tu integración con SUNAT
+---
+
+## Pasar a Producción
+
+Una vez que hayas probado completamente tu integración en el [ambiente beta](/sunat/testing), estás listo para pasar a producción y emitir comprobantes electrónicos válidos.
+
+<Warning>
+  Los comprobantes emitidos en producción tienen validez tributaria y no pueden ser eliminados. Asegúrate de haber probado exhaustivamente en beta antes de continuar.
+</Warning>
+
+## Requisitos Previos
+
+Antes de pasar a producción, necesitas:
+
+### 1. Certificado Digital Válido
+
+Debes obtener un certificado digital emitido por una entidad certificadora autorizada por SUNAT:
+
+- **PSE (Proveedor de Servicios Electrónicos)** autorizado por SUNAT
+- El certificado debe estar a nombre de tu RUC
+- Formato requerido: `.pfx` o `.p12` (convertir a `.pem` para usar con Greenter)
+
+**Conversión de PFX a PEM:**
+
+```bash
+# Convertir certificado .pfx a .pem
+openssl pkcs12 -in certificado.pfx -out certificado.pem -nodes
+```
+
+**Ubicación del certificado:**
+
+```
+storage/app/sunat/certificados/{TU_RUC}-cert.pem
+```
+
+Ejemplo:
+```
+storage/app/sunat/certificados/20612706702-cert.pem
+```
+
+<Note>
+  El sistema busca automáticamente el certificado específico de la empresa en `{RUC}-cert.pem`. Si no lo encuentra, usa el certificado global configurado en `config/sunat.php`.
+</Note>
+
+### 2. Credenciales SOL (Clave SOL)
+
+Debes obtener tus credenciales SOL desde SUNAT:
+
+1. Ingresa a **SUNAT Operaciones en Línea**
+2. Ve a **Sistema de Emisión Electrónica**
+3. Genera o recupera tu **Usuario SOL** y **Clave SOL**
+
+**Formato de Usuario SOL:**
+- Para el usuario principal: `{RUC}{USUARIO}` (ej: `20612706702ADMIN01`)
+- El sistema concatena automáticamente el RUC con el usuario
+
+### 3. Credenciales GRE (para Guías Electrónicas)
+
+Si usarás guías de remisión electrónicas (GRE), necesitas credenciales OAuth2:
+
+1. Solicita credenciales en **SUNAT Virtual**
+2. Obtén `client_id` y `client_secret`
+3. Configúralas en tu archivo `.env`
+
+## Configuración de Producción
+
+### 1. Variables de Entorno
+
+Configura las siguientes variables en tu archivo `.env`:
+
+```bash
+# Credenciales SUNAT (obligatorio para facturación)
+SUNAT_USER_SOL=ADMIN01
+SUNAT_CLAVE_SOL=tu_clave_sol_secreta
+
+# Credenciales GRE (solo si usas guías electrónicas)
+SUNAT_GRE_CLIENT_ID=tu_client_id
+SUNAT_GRE_CLIENT_SECRET=tu_client_secret
+
+# IGV (opcional, por defecto 18%)
+SUNAT_IGV=0.18
+```
+
+<Warning>
+  **Nunca** compartas ni versiones tus credenciales SOL. Mantén el archivo `.env` fuera de tu repositorio git.
+</Warning>
+
+### 2. Configurar Modo Producción en la Empresa
+
+En el registro de tu empresa, cambia el modo de `'beta'` a `'production'`:
+
+```php
+$empresa->modo = 'production';
+$empresa->ruc = '20612706702'; // Tu RUC real
+$empresa->user_sol = 'ADMIN01'; // Usuario SOL (sin el RUC)
+$empresa->clave_sol = env('SUNAT_CLAVE_SOL'); // Clave SOL desde .env
+$empresa->save();
+```
+
+<Note>
+  El campo `user_sol` debe contener solo el usuario (ej: `ADMIN01`), no el RUC. El sistema concatena automáticamente `{RUC}{user_sol}` al conectar con SUNAT.
+</Note>
+
+### 3. Endpoints de Producción
+
+El sistema utiliza automáticamente los endpoints de producción cuando `modo = 'production'`:
+
+**Facturación (Facturas, Boletas, Notas):**
+```
+https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService
+```
+
+**Guías de Remisión:**
+```
+https://e-guiaremision.sunat.gob.pe/ol-ti-itemision-guia-gem/billService
+```
+
+**GRE API (Guías Electrónicas REST):**
+- Auth: `https://api-seguridad.sunat.gob.pe/v1`
+- CPE: `https://api-cpe.sunat.gob.pe/v1`
+
+Estos endpoints están configurados en `config/sunat.php`:
+
+```php
+'endpoints' => [
+    'facturacion' => [
+        'beta' => 'https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService',
+        'production' => 'https://e-factura.sunat.gob.pe/ol-ti-itcpfegem/billService',
+    ],
+    'guia' => [
+        'beta' => 'https://e-beta.sunat.gob.pe/ol-ti-itemision-guia-gem-beta/billService',
+        'production' => 'https://e-guiaremision.sunat.gob.pe/ol-ti-itemision-guia-gem/billService',
+    ],
+    // ...
+],
+```
+
+## Verificación Antes de Producción
+
+### Checklist de Verificación
+
+Antes de emitir tu primer comprobante en producción:
+
+- [ ] Certificado digital válido instalado en `storage/app/sunat/certificados/{RUC}-cert.pem`
+- [ ] Credenciales SOL configuradas correctamente en la empresa
+- [ ] Credenciales GRE configuradas (si usas guías electrónicas)
+- [ ] Modo de empresa configurado como `'production'`
+- [ ] RUC real configurado en la empresa
+- [ ] Series de producción creadas (diferentes a las de prueba)
+- [ ] Todos los flujos probados exitosamente en beta
+- [ ] Backup de la base de datos realizado
+
+### Prueba de Conexión
+
+Puedes verificar la conexión con SUNAT sin emitir un comprobante:
+
+```php
+use App\Services\SunatService;
+
+$sunatService = new SunatService();
+
+try {
+    $see = $sunatService->getSee($empresa);
+    // Si no lanza excepción, la configuración es correcta
+    echo "Conexión exitosa con SUNAT";
+} catch (\Exception $e) {
+    echo "Error: " . $e->getMessage();
+}
+```
+
+## Emisión en Producción
+
+La emisión de comprobantes funciona igual que en beta, pero con datos reales:
+
+### Emitir Factura
+
+```php
+use App\Services\SunatService;
+
+$sunatService = new SunatService();
+
+// 1. Generar XML firmado
+$resultado = $sunatService->generarXml($venta);
+
+if ($resultado['success']) {
+    // 2. Enviar a SUNAT
+    $respuesta = $sunatService->enviarComprobante($venta);
+    
+    if ($respuesta['success']) {
+        // CDR recibido y guardado
+        echo "Factura aceptada: {$respuesta['mensaje']}";
+        // CDR disponible en: $respuesta['cdr_url']
+    } else {
+        // Error de SUNAT
+        echo "Error {$respuesta['codigo']}: {$respuesta['message']}";
+    }
+}
+```
+
+### Emitir Nota de Crédito
+
+```php
+// Generar XML
+$resultado = $sunatService->generarNotaCreditoXml($notaCredito);
+
+// Enviar a SUNAT
+$respuesta = $sunatService->enviarNotaCredito($notaCredito);
+
+if ($respuesta['success']) {
+    // La venta original se marca automáticamente como anulada
+    echo "Nota de crédito aceptada";
+}
+```
+
+### Emitir Guía de Remisión (GRE)
+
+```php
+// 1. Generar XML
+$resultado = $sunatService->generarGuiaRemisionXml($guia);
+
+// 2. Enviar (retorna ticket)
+$envio = $sunatService->enviarGuiaRemision($guia);
+
+if ($envio['success']) {
+    $ticket = $envio['ticket'];
+    
+    // 3. Consultar estado (puede requerir varios intentos)
+    sleep(2); // Esperar 2 segundos
+    
+    $estado = $sunatService->consultarTicketGuia($guia);
+    
+    if (isset($estado['en_proceso']) && $estado['en_proceso']) {
+        // Aún en proceso, reintentar después
+        echo "Procesando... ticket: {$ticket}";
+    } elseif ($estado['success']) {
+        echo "Guía aceptada por SUNAT";
+    } else {
+        echo "Error: {$estado['message']}";
+    }
+}
+```
+
+### Resumen Diario de Boletas
+
+```php
+// Obtener boletas del día
+$boletas = Venta::where('id_empresa', $empresa->id)
+    ->where('serie', 'B001')
+    ->whereDate('fecha_emision', today())
+    ->where('estado_sunat', '1') // Solo emitidas
+    ->get();
+
+// Enviar resumen
+$resumen = $sunatService->resumenDiario(
+    $empresa,
+    $boletas,
+    today()->format('Y-m-d'),
+    '001' // Correlativo
+);
+
+if ($resumen['success']) {
+    $ticket = $resumen['ticket'];
+    
+    // Consultar después de unos minutos
+    $estado = $sunatService->consultarTicket($empresa, $ticket);
+}
+```
+
+## Archivos en Producción
+
+Los archivos se guardan usando tu RUC real:
+
+```
+storage/app/sunat/
+├── xml/
+│   └── 20612706702/  # Tu RUC
+│       ├── 20612706702-01-F001-00000001.xml
+│       └── 20612706702-09-T001-00000001.xml
+├── cdr/
+│   └── 20612706702/
+│       ├── R-20612706702-01-F001-00000001.zip
+│       └── R-20612706702-09-T001-00000001.zip
+└── certificados/
+    └── 20612706702-cert.pem  # Tu certificado
+```
+
+## Respaldo y Seguridad
+
+### Respaldo de Archivos
+
+<Warning>
+  Es **obligatorio** mantener respaldos de los XML y CDR por al menos 5 años según la normativa tributaria peruana.
+</Warning>
+
+Recomendaciones:
+
+1. **Respaldo diario automático** de `storage/app/sunat/`
+2. **Almacenamiento en la nube** (S3, Google Cloud Storage, etc.)
+3. **Verificación de integridad** de los archivos respaldados
+4. **Respaldo de base de datos** que incluya referencias a los archivos
+
+### Seguridad
+
+- **Permisos de archivos:**
+  ```bash
+  chmod 755 storage/app/sunat/xml
+  chmod 755 storage/app/sunat/cdr
+  chmod 600 storage/app/sunat/certificados/*.pem
+  ```
+
+- **Credenciales:**
+  - Nunca versionar el archivo `.env`
+  - Usar variables de entorno en producción
+  - Rotar las claves periódicamente
+  - Limitar acceso a credenciales SOL
+
+## Monitoreo y Logs
+
+El sistema registra automáticamente errores de SUNAT en los logs de Laravel:
+
+```php
+// Los errores se guardan en storage/logs/laravel.log
+Log::error('SUNAT - Comprobante rechazado', [
+    'venta' => $venta->serie . '-' . $venta->numero,
+    'codigo' => $error->getCode(),
+    'mensaje' => $error->getMessage(),
+]);
+```
+
+**Configura alertas para:**
+- Errores de conexión con SUNAT
+- Comprobantes rechazados
+- Certificados próximos a vencer
+- Fallos en el envío de resúmenes diarios
+
+## Buenas Prácticas en Producción
+
+1. **Correlativos secuenciales:**
+   - Mantén la secuencia de números sin saltos
+   - No reutilices números de comprobantes
+
+2. **Envío inmediato:**
+   - Envía los comprobantes a SUNAT apenas se generen
+   - No acumules comprobantes sin enviar
+
+3. **Manejo de errores:**
+   - Registra todos los intentos de envío
+   - Implementa reintentos automáticos para errores temporales
+   - Notifica al usuario de errores críticos
+
+4. **Resúmenes diarios:**
+   - Automatiza el envío de resúmenes de boletas al final del día
+   - Verifica el estado de los tickets antes de medianoche
+
+5. **Comunicación de baja:**
+   - Usa solo cuando sea necesario (errores críticos)
+   - Preferir notas de crédito cuando sea posible
+
+## Troubleshooting en Producción
+
+Si encuentras problemas, consulta la página de [Solución de Problemas](/sunat/troubleshooting) que incluye:
+
+- Errores comunes y sus soluciones
+- Códigos de error de CDR
+- Problemas de certificados
+- Errores de conexión
+
+## Migración desde Beta
+
+Si tienes datos de prueba en beta:
+
+```php
+// NO migres datos de beta a producción
+// Empieza los correlativos desde 1 en producción
+
+// Series recomendadas:
+// Beta: F999, B999, T999
+// Producción: F001, B001, T001
+```
+
+<Warning>
+  Nunca migres comprobantes del ambiente beta a producción. Son datos de prueba sin validez tributaria.
+</Warning>
+
+## Soporte
+
+Si tienes problemas técnicos:
+
+1. Revisa los logs en `storage/logs/laravel.log`
+2. Consulta la [documentación de solución de problemas](/sunat/troubleshooting)
+3. Verifica el estado de los servicios de SUNAT
+4. Contacta al soporte de tu PSE (proveedor del certificado)
+
+## Siguientes Pasos
+
+<CardGroup cols={2}>
+  <Card title="Ambiente Beta" icon="flask" href="/sunat/testing">
+    Volver al ambiente de pruebas
+  </Card>
+  <Card title="Solución de Problemas" icon="wrench" href="/sunat/troubleshooting">
+    Resuelve errores comunes
+  </Card>
+</CardGroup>

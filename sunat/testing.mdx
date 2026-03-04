@@ -1,0 +1,252 @@
+---
+title: Ambiente de Pruebas (Beta)
+description: Configura y prueba la integración con SUNAT en el ambiente beta
+---
+
+## Ambiente Beta de SUNAT
+
+El ambiente beta (o de pruebas) de SUNAT te permite probar la emisión de comprobantes electrónicos sin afectar documentos reales. Es el entorno ideal para desarrollo y pruebas antes de pasar a producción.
+
+<Note>
+  Todo comprobante emitido en el ambiente beta es solo para pruebas y no tiene validez tributaria.
+</Note>
+
+## Configuración del Ambiente Beta
+
+### 1. Configurar el Modo en la Empresa
+
+En el registro de tu empresa, establece el campo `modo` como `'beta'`:
+
+```php
+$empresa->modo = 'beta';
+$empresa->save();
+```
+
+Cuando una empresa está en modo beta, el sistema automáticamente:
+- Usa los endpoints beta de SUNAT
+- Utiliza las credenciales de prueba proporcionadas por SUNAT
+- Usa el RUC de prueba en lugar del RUC real de la empresa
+
+### 2. Credenciales de Prueba
+
+SUNAT proporciona credenciales estándar para pruebas configuradas en `config/sunat.php`:
+
+```php
+'beta' => [
+    'ruc' => '20000000001',
+    'usuario_sol' => 'MODDATOS',
+    'clave_sol' => 'moddatos',
+],
+```
+
+**Credenciales de prueba:**
+- **RUC:** 20000000001
+- **Usuario SOL:** MODDATOS
+- **Clave SOL:** moddatos
+
+<Note>
+  Estas credenciales son públicas y proporcionadas por SUNAT para todos los desarrolladores.
+</Note>
+
+### 3. Endpoints Beta
+
+El sistema utiliza los siguientes endpoints beta de SUNAT:
+
+**Facturación (Facturas, Boletas, Notas):**
+```
+https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService
+```
+
+**Guías de Remisión:**
+```
+https://e-beta.sunat.gob.pe/ol-ti-itemision-guia-gem-beta/billService
+```
+
+**GRE API (Guías Electrónicas REST):**
+- Auth: `https://api-seguridad.sunat.gob.pe/v1`
+- CPE: `https://api-cpe.sunat.gob.pe/v1`
+
+<Note>
+  Los endpoints de GRE API son los mismos para beta y producción. La diferencia está en las credenciales utilizadas.
+</Note>
+
+## Certificado Digital de Prueba
+
+Para firmar los XML en el ambiente beta, necesitas un certificado digital. Puedes:
+
+1. **Usar el certificado global de prueba** (recomendado para desarrollo):
+   - Ubicado en `storage/app/sunat/certificados/cert.pem`
+   - Configurado en `config/sunat.php`
+
+2. **Usar un certificado específico por empresa**:
+   - Guardar en `storage/app/sunat/certificados/{RUC}-cert.pem`
+   - El sistema lo detectará automáticamente
+
+```php
+// El servicio busca el certificado en este orden:
+// 1. storage/app/sunat/certificados/{RUC}-cert.pem
+// 2. El certificado global configurado en config/sunat.php
+```
+
+<Warning>
+  El certificado de prueba NO debe usarse en producción. Genera un certificado válido con tu RUC real antes de pasar a producción.
+</Warning>
+
+## Probando la Integración
+
+### Emitir una Factura de Prueba
+
+```php
+use App\Services\SunatService;
+
+$sunatService = new SunatService();
+
+// Generar XML
+$resultado = $sunatService->generarXml($venta);
+// Resultado: ['success' => true, 'nombre_archivo' => '...', 'hash' => '...']
+
+// Enviar a SUNAT
+$respuesta = $sunatService->enviarComprobante($venta);
+// Respuesta exitosa: ['success' => true, 'codigo' => '0', 'mensaje' => 'La Factura...ha sido aceptada']
+```
+
+### Emitir una Guía de Remisión (GRE)
+
+```php
+// Generar XML
+$resultado = $sunatService->generarGuiaRemisionXml($guia);
+
+// Enviar a SUNAT (retorna ticket)
+$respuesta = $sunatService->enviarGuiaRemision($guia);
+// Resultado: ['success' => true, 'ticket' => '123456789']
+
+// Consultar estado con el ticket
+$estado = $sunatService->consultarTicketGuia($guia);
+// Si está procesado: ['success' => true, 'codigo' => '0', 'mensaje' => 'Guía aceptada...']
+// Si aún está en proceso: ['success' => true, 'codigo' => '98', 'en_proceso' => true]
+```
+
+### Emitir Boletas (requiere Resumen Diario)
+
+```php
+// 1. Generar y enviar boletas normalmente
+$sunatService->generarXml($boleta);
+
+// 2. Al final del día, enviar resumen diario
+$boletas = Venta::where('serie', 'B001')
+    ->whereDate('fecha_emision', today())
+    ->get();
+
+$resumen = $sunatService->resumenDiario(
+    $empresa,
+    $boletas,
+    today()->format('Y-m-d'),
+    '001' // Correlativo
+);
+// Resultado: ['success' => true, 'ticket' => '...']
+
+// 3. Consultar ticket del resumen
+$estado = $sunatService->consultarTicket($empresa, $resumen['ticket']);
+```
+
+## Datos de Prueba Recomendados
+
+### Clientes de Prueba
+
+**Cliente con RUC:**
+- RUC: 20100070970
+- Razón Social: CLIENTE DE PRUEBA SAC
+
+**Cliente con DNI:**
+- DNI: 12345678
+- Nombre: CLIENTE DE PRUEBA
+
+### Series de Prueba
+
+- Facturas: `F001`, `F002`
+- Boletas: `B001`, `B002`
+- Notas de Crédito: `FC01`, `BC01`
+- Notas de Débito: `FD01`
+- Guías de Remisión: `T001`
+
+## Verificar Respuestas de SUNAT
+
+### Respuesta Exitosa
+
+Cuando un comprobante es aceptado:
+
+```php
+[
+    'success' => true,
+    'codigo' => '0',
+    'mensaje' => 'La Factura numero F001-00000123 ha sido aceptada',
+    'cdr_url' => 'sunat/cdr/20000000001/R-20000000001-01-F001-00000123.zip'
+]
+```
+
+### Respuesta con Error
+
+Cuando hay un error:
+
+```php
+[
+    'success' => false,
+    'codigo' => '2324',
+    'message' => 'El número de RUC del archivo no corresponde con el RUC del certificado digital'
+]
+```
+
+<Note>
+  Los códigos de error son los mismos en beta y producción. Consulta la página de [Solución de Problemas](/sunat/troubleshooting) para ver errores comunes.
+</Note>
+
+## Archivos Generados
+
+En modo beta, todos los archivos se guardan usando el RUC de prueba `20000000001`:
+
+```
+storage/app/sunat/
+├── xml/
+│   └── 20000000001/
+│       ├── 20000000001-01-F001-00000001.xml
+│       └── 20000000001-03-B001-00000001.xml
+├── cdr/
+│   └── 20000000001/
+│       ├── R-20000000001-01-F001-00000001.zip
+│       └── R-20000000001-03-B001-00000001.zip
+└── certificados/
+    └── cert.pem
+```
+
+## Limitaciones del Ambiente Beta
+
+<Warning>
+  **Limitaciones importantes:**
+  
+  - Los comprobantes no tienen validez tributaria
+  - El servicio puede ser inestable o tener tiempos de respuesta lentos
+  - SUNAT puede reiniciar o limpiar los datos sin previo aviso
+  - No se debe usar para emitir comprobantes reales
+</Warning>
+
+## Transición a Producción
+
+Cuando estés listo para pasar a producción:
+
+1. Verifica que todos los flujos funcionen correctamente en beta
+2. Obtén tu certificado digital válido
+3. Configura tus credenciales SOL reales
+4. Cambia el modo de la empresa a producción
+
+Consulta la página [Ambiente de Producción](/sunat/production) para más detalles.
+
+## Siguientes Pasos
+
+<CardGroup cols={2}>
+  <Card title="Producción" icon="rocket" href="/sunat/production">
+    Configura el ambiente de producción
+  </Card>
+  <Card title="Solución de Problemas" icon="wrench" href="/sunat/troubleshooting">
+    Resuelve errores comunes
+  </Card>
+</CardGroup>

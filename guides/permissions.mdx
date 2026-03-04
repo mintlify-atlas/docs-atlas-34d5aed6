@@ -1,0 +1,622 @@
+---
+title: 'Permisos'
+description: 'Sistema de permisos granulares para control de acceso en el sistema de facturación electrónica'
+---
+
+## Visión General
+
+El sistema implementa un modelo de permisos granular que permite controlar con precisión qué acciones puede realizar cada rol en cada módulo del sistema.
+
+## Modelo de Datos
+
+### Permission
+
+**Modelo**: `App\Models\Permission`
+
+**Ubicación**: `app/Models/Permission.php`
+
+**Tabla**: `permissions`
+
+**Campos**:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `permission_id` | integer | Identificador único del permiso (PK) |
+| `name` | string | Nombre único del permiso (ej: `ventas.create`) |
+| `display_name` | string | Nombre legible del permiso (ej: `Crear Ventas`) |
+| `module` | string | Módulo al que pertenece (ej: `ventas`) |
+| `action` | string | Acción que permite (ej: `create`) |
+| `description` | text | Descripción del permiso |
+| `created_at` | timestamp | Fecha de creación |
+| `updated_at` | timestamp | Fecha de actualización |
+
+**Relación**:
+
+```php
+public function roles()
+{
+    return $this->belongsToMany(
+        Rol::class,
+        'role_permission',
+        'permission_id',
+        'rol_id'
+    );
+}
+```
+
+### Tabla Pivot: role_permission
+
+**Tabla**: `role_permission`
+
+**Campos**:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | integer | Identificador único (PK) |
+| `rol_id` | integer | ID del rol (FK → `roles.rol_id`) |
+| `permission_id` | integer | ID del permiso (FK → `permissions.permission_id`) |
+| `created_at` | timestamp | Fecha de asignación |
+| `updated_at` | timestamp | Fecha de actualización |
+
+**Constraint único**: `[rol_id, permission_id]` - Un rol no puede tener el mismo permiso duplicado.
+
+## Nomenclatura de Permisos
+
+Los permisos siguen el formato: `{módulo}.{acción}`
+
+### Estructura
+
+- **Módulo**: Área funcional del sistema (ventas, productos, clientes, etc.)
+- **Acción**: Operación permitida (view, create, edit, delete)
+
+### Ejemplos
+
+- `ventas.view` → Ver ventas
+- `ventas.create` → Crear ventas
+- `productos.edit` → Editar productos
+- `clientes.delete` → Eliminar clientes
+
+## Permisos del Sistema
+
+El sistema incluye los siguientes permisos por defecto:
+
+### Módulo: Ventas
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `ventas.view` | Ver Ventas | Permiso para Ver en el módulo de Ventas |
+| `ventas.create` | Crear Ventas | Permiso para Crear en el módulo de Ventas |
+| `ventas.edit` | Editar Ventas | Permiso para Editar en el módulo de Ventas |
+| `ventas.delete` | Eliminar Ventas | Permiso para Eliminar en el módulo de Ventas |
+
+**Rutas protegidas**:
+- `GET /api/ventas` → `ventas.view`
+- `POST /api/ventas` → `ventas.create`
+- `PUT /api/ventas/{id}` → `ventas.edit`
+- `DELETE /api/ventas/{id}` → `ventas.delete`
+- `POST /api/ventas/{id}/anular` → `ventas.delete`
+- `POST /api/ventas/{id}/descontar-stock` → `ventas.edit`
+- `GET /api/ventas/exportar-*` → `ventas.view`
+
+### Módulo: Productos
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `productos.view` | Ver Productos | Permiso para Ver en el módulo de Productos |
+| `productos.create` | Crear Productos | Permiso para Crear en el módulo de Productos |
+| `productos.edit` | Editar Productos | Permiso para Editar en el módulo de Productos |
+| `productos.delete` | Eliminar Productos | Permiso para Eliminar en el módulo de Productos |
+
+**Rutas protegidas**:
+- `GET /api/productos` → `productos.view`
+- `POST /api/productos` → `productos.create`
+- `PUT /api/productos/{id}` → `productos.edit`
+- `DELETE /api/productos/{id}` → `productos.delete`
+- `GET /api/movimientos-stock` → `productos.view`
+- `POST /api/productos/leer-excel` → `productos.create`
+- `POST /api/productos/importar-lista` → `productos.create`
+
+### Módulo: Clientes
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `clientes.view` | Ver Clientes | Permiso para Ver en el módulo de Clientes |
+| `clientes.create` | Crear Clientes | Permiso para Crear en el módulo de Clientes |
+| `clientes.edit` | Editar Clientes | Permiso para Editar en el módulo de Clientes |
+| `clientes.delete` | Eliminar Clientes | Permiso para Eliminar en el módulo de Clientes |
+
+**Rutas protegidas**:
+- `GET /api/clientes` → `clientes.view`
+- `POST /api/clientes` → `clientes.create`
+- `PUT /api/clientes/{id}` → `clientes.edit`
+- `DELETE /api/clientes/{id}` → `clientes.delete`
+
+### Módulo: Proveedores
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `proveedores.view` | Ver Proveedores | Permiso para Ver en el módulo de Proveedores |
+| `proveedores.create` | Crear Proveedores | Permiso para Crear en el módulo de Proveedores |
+| `proveedores.edit` | Editar Proveedores | Permiso para Editar en el módulo de Proveedores |
+| `proveedores.delete` | Eliminar Proveedores | Permiso para Eliminar en el módulo de Proveedores |
+
+**Rutas protegidas**:
+- `GET /api/proveedores` → `proveedores.view`
+- `POST /api/proveedores` → `proveedores.create`
+- `PUT /api/proveedores/{id}` → `proveedores.edit`
+- `DELETE /api/proveedores/{id}` → `proveedores.delete`
+
+### Módulo: Compras
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `compras.view` | Ver Compras | Permiso para Ver en el módulo de Compras |
+| `compras.create` | Crear Compras | Permiso para Crear en el módulo de Compras |
+| `compras.edit` | Editar Compras | Permiso para Editar en el módulo de Compras |
+| `compras.delete` | Eliminar Compras | Permiso para Eliminar en el módulo de Compras |
+
+**Rutas protegidas**:
+- `GET /api/compras` → `compras.view`
+- `POST /api/compras` → `compras.create`
+- `PUT /api/compras/{id}` → `compras.edit`
+- `DELETE /api/compras/{id}` → `compras.delete`
+- `POST /api/compras/{id}/anular` → `compras.delete`
+
+### Módulo: Cotizaciones
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `cotizaciones.view` | Ver Cotizaciones | Permiso para Ver en el módulo de Cotizaciones |
+| `cotizaciones.create` | Crear Cotizaciones | Permiso para Crear en el módulo de Cotizaciones |
+| `cotizaciones.edit` | Editar Cotizaciones | Permiso para Editar en el módulo de Cotizaciones |
+| `cotizaciones.delete` | Eliminar Cotizaciones | Permiso para Eliminar en el módulo de Cotizaciones |
+
+**Rutas protegidas**:
+- `GET /api/cotizaciones` → `cotizaciones.view`
+- `POST /api/cotizaciones` → `cotizaciones.create`
+- `PUT /api/cotizaciones/{id}` → `cotizaciones.edit`
+- `DELETE /api/cotizaciones/{id}` → `cotizaciones.delete`
+- `POST /api/cotizaciones/{id}/estado` → `cotizaciones.edit`
+
+### Módulo: Empresas
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `empresas.view` | Ver Empresas | Permiso para Ver en el módulo de Empresas |
+| `empresas.create` | Crear Empresas | Permiso para Crear en el módulo de Empresas |
+| `empresas.edit` | Editar Empresas | Permiso para Editar en el módulo de Empresas |
+| `empresas.delete` | Eliminar Empresas | Permiso para Eliminar en el módulo de Empresas |
+
+**Nota**: La gestión de empresas típicamente está restringida solo a administradores.
+
+### Módulo: Usuarios
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `usuarios.view` | Ver Usuarios | Permiso para Ver en el módulo de Usuarios |
+| `usuarios.create` | Crear Usuarios | Permiso para Crear en el módulo de Usuarios |
+| `usuarios.edit` | Editar Usuarios | Permiso para Editar en el módulo de Usuarios |
+| `usuarios.delete` | Eliminar Usuarios | Permiso para Eliminar en el módulo de Usuarios |
+
+**Nota**: La gestión de usuarios típicamente está restringida a roles administrativos.
+
+### Módulo: Reportes
+
+| Permiso | Nombre para Mostrar | Descripción |
+|---------|---------------------|-------------|
+| `reportes.view` | Ver Reportes | Permiso para Ver en el módulo de Reportes |
+| `reportes.create` | Crear Reportes | Permiso para Crear en el módulo de Reportes |
+| `reportes.edit` | Editar Reportes | Permiso para Editar en el módulo de Reportes |
+| `reportes.delete` | Eliminar Reportes | Permiso para Eliminar en el módulo de Reportes |
+
+## Middleware CheckPermission
+
+**Ubicación**: `app/Http/Middleware/CheckPermission.php`
+
+**Registro**: `bootstrap/app.php:24` como `'permission'`
+
+### Funcionamiento
+
+```php
+public function handle(Request $request, Closure $next, string $permission): Response
+{
+    $user = $request->user();
+
+    // Si no hay usuario autenticado, denegar acceso
+    if (!$user) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No autenticado'
+        ], 401);
+    }
+
+    // Admin (rol_id = 1) tiene acceso a todo
+    if ($user->rol_id == 1) {
+        return $next($request);
+    }
+
+    // Verificar si el usuario tiene el permiso
+    if (!$user->hasPermission($permission)) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No tienes permiso para realizar esta acción'
+        ], 403);
+    }
+
+    return $next($request);
+}
+```
+
+### Uso en Rutas
+
+```php
+Route::middleware(['auth:sanctum', 'permission:ventas.create'])
+    ->post('/ventas', [VentasController::class, 'store']);
+
+// Forma abreviada
+Route::post('/ventas', [VentasController::class, 'store'])
+    ->middleware('permission:ventas.create');
+```
+
+### Códigos de Respuesta
+
+- **401 Unauthorized**: Usuario no autenticado
+- **403 Forbidden**: Usuario autenticado pero sin el permiso necesario
+- **200 OK**: Usuario tiene el permiso, la solicitud continúa
+
+## Gestión de Permisos
+
+### Asignar Permiso a Rol
+
+```php
+$rol = Rol::find(2);
+$permission = Permission::where('name', 'ventas.create')->first();
+
+$rol->permissions()->attach($permission->permission_id);
+```
+
+### Asignar Múltiples Permisos
+
+```php
+$rol = Rol::find(2);
+$permissionIds = Permission::whereIn('name', [
+    'ventas.view',
+    'ventas.create',
+    'productos.view'
+])->pluck('permission_id')->toArray();
+
+$rol->permissions()->sync($permissionIds);
+```
+
+### Remover Permiso de Rol
+
+```php
+$rol = Rol::find(2);
+$permission = Permission::where('name', 'ventas.delete')->first();
+
+$rol->permissions()->detach($permission->permission_id);
+```
+
+### Verificar si Rol Tiene Permiso
+
+```php
+$rol = Rol::find(2);
+
+if ($rol->hasPermission('ventas.create')) {
+    echo "El rol puede crear ventas";
+}
+```
+
+### Obtener Todos los Permisos de un Rol
+
+```php
+$rol = Rol::with('permissions')->find(2);
+
+foreach ($rol->permissions as $permission) {
+    echo $permission->display_name . "\n";
+}
+```
+
+### Obtener Roles que Tienen un Permiso
+
+```php
+$permission = Permission::with('roles')
+    ->where('name', 'ventas.create')
+    ->first();
+
+foreach ($permission->roles as $rol) {
+    echo $rol->nombre . "\n";
+}
+```
+
+## Creación de Permisos
+
+Los permisos se crean automáticamente mediante la migración:
+
+**Archivo**: `database/migrations/2026_02_24_023530_create_permissions_and_role_permission_tables.php:58-97`
+
+```php
+private function insertDefaultPermissions()
+{
+    $modules = [
+        'ventas' => 'Ventas',
+        'productos' => 'Productos',
+        'clientes' => 'Clientes',
+        'proveedores' => 'Proveedores',
+        'compras' => 'Compras',
+        'cotizaciones' => 'Cotizaciones',
+        'empresas' => 'Empresas',
+        'usuarios' => 'Usuarios',
+        'reportes' => 'Reportes',
+    ];
+
+    $actions = [
+        'view' => 'Ver',
+        'create' => 'Crear',
+        'edit' => 'Editar',
+        'delete' => 'Eliminar',
+    ];
+
+    $permissions = [];
+    $now = now();
+
+    foreach ($modules as $moduleKey => $moduleName) {
+        foreach ($actions as $actionKey => $actionName) {
+            $permissions[] = [
+                'name' => "{$moduleKey}.{$actionKey}",
+                'display_name' => "{$actionName} {$moduleName}",
+                'module' => $moduleKey,
+                'action' => $actionKey,
+                'description' => "Permiso para {$actionName} en el módulo de {$moduleName}",
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+    }
+
+    DB::table('permissions')->insert($permissions);
+}
+```
+
+### Agregar Nuevos Permisos
+
+Para agregar permisos a un nuevo módulo:
+
+```php
+use App\Models\Permission;
+
+$module = 'inventario';
+$moduleName = 'Inventario';
+$actions = [
+    'view' => 'Ver',
+    'create' => 'Crear',
+    'edit' => 'Editar',
+    'delete' => 'Eliminar',
+];
+
+foreach ($actions as $actionKey => $actionName) {
+    Permission::create([
+        'name' => "{$module}.{$actionKey}",
+        'display_name' => "{$actionName} {$moduleName}",
+        'module' => $module,
+        'action' => $actionKey,
+        'description' => "Permiso para {$actionName} en el módulo de {$moduleName}",
+    ]);
+}
+```
+
+## Verificación en Frontend
+
+### Obtener Permisos al Login
+
+Al hacer login, el sistema retorna todos los permisos del usuario:
+
+```javascript
+const response = await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ user: 'admin', password: 'secret' })
+});
+
+const data = await response.json();
+const permissions = data.permissions; // ['ventas.view', 'ventas.create', ...]
+
+// Guardar en localStorage o estado global
+localStorage.setItem('permissions', JSON.stringify(permissions));
+```
+
+### Verificar Permisos en React
+
+```javascript
+// Hook personalizado
+function usePermission(permission) {
+  const permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
+  return permissions.includes(permission);
+}
+
+// En un componente
+function VentasPage() {
+  const canCreate = usePermission('ventas.create');
+  const canDelete = usePermission('ventas.delete');
+
+  return (
+    <div>
+      {canCreate && <button>Crear Venta</button>}
+      {canDelete && <button>Eliminar</button>}
+    </div>
+  );
+}
+```
+
+### Store de Permisos con Zustand
+
+```javascript
+// stores/authStore.js
+import { create } from 'zustand';
+
+const useAuthStore = create((set) => ({
+  permissions: [],
+  setPermissions: (permissions) => set({ permissions }),
+  hasPermission: (permission) => {
+    const state = useAuthStore.getState();
+    return state.permissions.includes(permission);
+  },
+}));
+
+export default useAuthStore;
+```
+
+## Mejores Prácticas
+
+### 1. Verificación en Backend
+
+**Siempre** verifique permisos en el backend, incluso si ya los verificó en frontend:
+
+```php
+public function store(Request $request)
+{
+    // El middleware ya verificó el permiso
+    // pero puede hacer verificaciones adicionales
+    
+    if (!$request->user()->hasPermission('ventas.create')) {
+        abort(403);
+    }
+    
+    // Proceder con la creación
+}
+```
+
+### 2. Permisos Compuestos
+
+Para operaciones que requieren múltiples permisos:
+
+```php
+public function transferStock(Request $request)
+{
+    $user = $request->user();
+    
+    if (!$user->hasAllPermissions(['productos.view', 'productos.edit'])) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Necesitas permisos de ver y editar productos'
+        ], 403);
+    }
+    
+    // Proceder con la transferencia
+}
+```
+
+### 3. Permisos Alternativos
+
+Para operaciones que aceptan permisos alternativos:
+
+```php
+public function viewFinancial(Request $request)
+{
+    $user = $request->user();
+    
+    if (!$user->hasAnyPermission(['reportes.view', 'ventas.view'])) {
+        return response()->json([
+            'success' => false,
+            'message' => 'No tienes acceso a reportes financieros'
+        ], 403);
+    }
+    
+    // Mostrar reporte
+}
+```
+
+### 4. Mensajes Descriptivos
+
+Use mensajes de error claros:
+
+```php
+if (!$user->hasPermission('clientes.delete')) {
+    return response()->json([
+        'success' => false,
+        'message' => 'No tienes permiso para eliminar clientes. Contacta a tu administrador.'
+    ], 403);
+}
+```
+
+### 5. Logging de Intentos Denegados
+
+Registre intentos de acceso no autorizado para auditoría:
+
+```php
+use Illuminate\Support\Facades\Log;
+
+if (!$user->hasPermission($permission)) {
+    Log::warning('Intento de acceso denegado', [
+        'user_id' => $user->id,
+        'permission' => $permission,
+        'ip' => $request->ip(),
+        'url' => $request->fullUrl()
+    ]);
+    
+    abort(403);
+}
+```
+
+## Troubleshooting
+
+### Permiso no funciona después de asignarlo
+
+**Causa**: Cache de relaciones o sesión antigua.
+
+**Solución**:
+1. Refrescar la relación: `$rol->load('permissions')`
+2. Hacer logout y login nuevamente
+3. Verificar en base de datos: `SELECT * FROM role_permission WHERE rol_id = X`
+
+### Admin todavía pasa por verificación de permisos
+
+**Causa**: El bypass no está antes de la verificación.
+
+**Solución**: Verificar que el check de `rol_id == 1` esté **antes** de `hasPermission()`.
+
+### 403 en todas las rutas
+
+**Causa**: Usuario sin rol o rol sin permisos.
+
+**Solución**:
+1. Verificar que el usuario tiene `rol_id` asignado
+2. Verificar que el rol existe: `SELECT * FROM roles WHERE rol_id = X`
+3. Verificar que el rol tiene permisos: `SELECT * FROM role_permission WHERE rol_id = X`
+
+### Permisos no se retornan en login
+
+**Causa**: Relación no cargada correctamente.
+
+**Solución**: Verificar implementación en `AuthController.php:68-76`.
+
+## Extensiones Futuras
+
+### Permisos a Nivel de Registro
+
+Para restringir acceso a registros específicos:
+
+```php
+if (!$user->hasPermission('ventas.edit')) {
+    abort(403);
+}
+
+// Verificar que la venta pertenece a la empresa del usuario
+$venta = Venta::where('id', $id)
+    ->where('id_empresa', $user->id_empresa)
+    ->firstOrFail();
+```
+
+### Permisos Temporales
+
+Agregar campos de fecha a `role_permission`:
+
+```php
+$rol->permissions()->attach($permissionId, [
+    'expires_at' => now()->addDays(7)
+]);
+```
+
+### Permisos de Solo Lectura
+
+Agregar campo `read_only` a `role_permission` para permitir ver pero no editar ciertos datos.

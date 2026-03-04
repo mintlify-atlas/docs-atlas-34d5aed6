@@ -1,0 +1,420 @@
+---
+title: 'Certificados Digitales'
+description: 'Gestión de certificados digitales para firma electrónica de comprobantes SUNAT'
+---
+
+## ¿Qué es un Certificado Digital?
+
+Un certificado digital es un archivo que contiene una clave pública y privada que permite:
+
+- **Firmar electrónicamente** los comprobantes XML
+- **Garantizar autenticidad** del emisor del documento
+- **Cumplir normativa SUNAT** que requiere firma digital en todos los comprobantes
+
+Es equivalente a una firma manuscrita, pero en formato digital y verificable.
+
+## Requisitos del Certificado
+
+SUNAT acepta certificados que cumplan:
+
+### Estándar X.509
+
+- Certificado de tipo **X.509 v3**
+- Algoritmo de firma: **SHA-256** o superior
+- Longitud mínima de clave: **2048 bits** (recomendado 4096 bits)
+
+### Entidad Certificadora
+
+El certificado debe ser emitido por una Entidad de Certificación (CA) reconocida:
+
+- **RENIEC** (Perú - Entidad oficial)
+- **Digicert**
+- **GlobalSign**
+- **Otras CAs reconocidas internacionalmente**
+
+### Vigencia
+
+- El certificado debe estar **vigente** al momento de firmar
+- SUNAT rechaza documentos firmados con certificados vencidos
+- Se recomienda renovar con **30 días de anticipación** al vencimiento
+
+<Warning>
+**SUNAT valida la vigencia del certificado** al momento de recibir el documento. Un certificado vencido causará rechazo inmediato.
+</Warning>
+
+## Obtener un Certificado
+
+### Certificado de Prueba (Beta)
+
+Para el ambiente de pruebas, puede usar el certificado de demostración de SUNAT:
+
+1. Descargue el certificado de prueba desde [SUNAT - Recursos](https://cpe.sunat.gob.pe/)
+2. Guárdelo en: `storage/app/sunat/certificados/cert.pem`
+
+Este certificado es válido **solo para el ambiente beta** y no tiene costo.
+
+### Certificado de Producción
+
+Para producción, debe adquirir un certificado comercial:
+
+1. **RENIEC (Perú)**:
+   - Visite [www.reniec.gob.pe/certificado-digital](https://www.reniec.gob.pe/certificado-digital)
+   - Presente documentos de la empresa
+   - Costo aproximado: S/ 200 - 400 por año
+   - Plazo de emisión: 5-7 días hábiles
+
+2. **Proveedores Internacionales**:
+   - Digicert, GlobalSign, Sectigo
+   - Compra en línea
+   - Mayor costo pero emisión rápida
+   - Costo aproximado: $150 - 500 USD por año
+
+<Warning>
+**El certificado debe estar a nombre de la empresa** (RUC), no a nombre personal del representante legal.
+</Warning>
+
+## Formato del Certificado (.pem)
+
+SUNAT y Greenter requieren certificados en formato **PEM** (Privacy Enhanced Mail).
+
+### ¿Qué es PEM?
+
+PEM es un formato de texto que contiene:
+
+```
+-----BEGIN CERTIFICATE-----
+MIIE...(contenido base64)...==
+-----END CERTIFICATE-----
+-----BEGIN RSA PRIVATE KEY-----
+MIIE...(contenido base64)...==
+-----END RSA PRIVATE KEY-----
+```
+
+El archivo `.pem` combina:
+- **Certificado público** (BEGIN CERTIFICATE)
+- **Clave privada** (BEGIN RSA PRIVATE KEY)
+
+### Conversión de Formatos
+
+Si recibe el certificado en otro formato, conviértalo a PEM:
+
+#### Desde .pfx / .p12 a .pem
+
+```bash
+# Extraer certificado y clave privada
+openssl pkcs12 -in certificado.pfx -out certificado.pem -nodes
+
+# Si pide contraseña, ingrese la contraseña del PFX
+```
+
+#### Desde .cer + .key a .pem
+
+```bash
+# Combinar certificado y clave privada
+cat certificado.cer clave-privada.key > certificado.pem
+```
+
+#### Verificar el certificado PEM
+
+```bash
+# Ver información del certificado
+openssl x509 -in certificado.pem -text -noout
+
+# Verificar que contiene clave privada
+openssl rsa -in certificado.pem -check
+```
+
+<Warning>
+**Proteja la clave privada**. El archivo .pem contiene información sensible que permite firmar documentos en nombre de su empresa.
+</Warning>
+
+## Ubicación de Certificados
+
+Los certificados se almacenan en `storage/app/sunat/certificados/`:
+
+```
+storage/app/sunat/certificados/
+├── cert.pem                    # Certificado de prueba (beta)
+└── 20612706702-cert.pem        # Certificado por RUC
+```
+
+### Lógica de Búsqueda
+
+El sistema busca certificados en este orden:
+
+```php
+// SunatService.php - línea 68-82
+public function getCertificate(Empresa $empresa): string
+{
+    // 1. Buscar certificado específico de la empresa
+    $certPath = storage_path("app/sunat/certificados/{$empresa->ruc}-cert.pem");
+    
+    if (file_exists($certPath)) {
+        return file_get_contents($certPath);
+    }
+    
+    // 2. Si no existe, usar certificado de prueba global
+    $globalCert = config('sunat.certificado_prueba');
+    if (file_exists($globalCert)) {
+        return file_get_contents($globalCert);
+    }
+    
+    // 3. Si ninguno existe, lanzar error
+    throw new \RuntimeException('No se encontró certificado PEM para la empresa ' . $empresa->ruc);
+}
+```
+
+### Nomenclatura
+
+- **Certificado global**: `cert.pem` (usado como fallback)
+- **Certificado por empresa**: `{RUC}-cert.pem` (ejemplo: `20612706702-cert.pem`)
+
+## Subir Certificado
+
+### Método Manual
+
+1. Conecte al servidor vía SFTP/SSH
+2. Navegue a `storage/app/sunat/certificados/`
+3. Suba el archivo `.pem` con nomenclatura: `{RUC}-cert.pem`
+4. Establezca permisos:
+
+```bash
+chmod 600 storage/app/sunat/certificados/*.pem
+chown www-data:www-data storage/app/sunat/certificados/*.pem
+```
+
+### Método Programático
+
+Cree un endpoint para subir certificados:
+
+```php
+// Ejemplo de controlador
+public function subirCertificado(Request $request)
+{
+    $request->validate([
+        'certificado' => 'required|file|mimes:pem|max:10240',
+        'empresa_id' => 'required|exists:empresas,id',
+    ]);
+    
+    $empresa = Empresa::findOrFail($request->empresa_id);
+    
+    $filename = "{$empresa->ruc}-cert.pem";
+    $path = $request->file('certificado')
+        ->storeAs('sunat/certificados', $filename);
+    
+    // Verificar que el certificado es válido
+    $certContent = Storage::get($path);
+    if (!openssl_x509_read($certContent)) {
+        Storage::delete($path);
+        return response()->json(['error' => 'Certificado inválido'], 422);
+    }
+    
+    return response()->json([
+        'message' => 'Certificado subido correctamente',
+        'path' => $path,
+    ]);
+}
+```
+
+## Seguridad de Certificados
+
+### Permisos de Archivo
+
+Los certificados deben tener permisos restrictivos:
+
+```bash
+# Solo el propietario puede leer/escribir
+chmod 600 storage/app/sunat/certificados/*.pem
+
+# Propietario: usuario del servidor web
+chown www-data:www-data storage/app/sunat/certificados/*.pem
+```
+
+### No Versionar
+
+Asegúrese de que `.gitignore` excluye certificados:
+
+```bash
+# .gitignore
+storage/app/sunat/certificados/*.pem
+*.pfx
+*.p12
+```
+
+<Warning>
+**NUNCA suba certificados a repositorios Git**. Las claves privadas expuestas permiten que cualquiera firme documentos en nombre de su empresa.
+</Warning>
+
+### Cifrado en Reposo
+
+Consideraciones adicionales:
+
+- Use **cifrado de disco** en el servidor (LUKS, dm-crypt)
+- Almacene certificados en **volúmenes cifrados**
+- Considere usar **Laravel Vault** o **AWS Secrets Manager** para certificados en la nube
+
+### Rotación de Certificados
+
+Procedimiento para renovar certificados:
+
+1. Adquiera el nuevo certificado **antes** de que venza el actual
+2. Pruebe el nuevo certificado en **ambiente beta**
+3. Programe el cambio en **horario de baja actividad**
+4. Reemplace el archivo `.pem` con el nuevo certificado
+5. Verifique que los envíos funcionan correctamente
+6. Mantenga el certificado anterior como respaldo por 30 días
+
+```bash
+# Respaldo del certificado anterior
+cp 20612706702-cert.pem 20612706702-cert.pem.backup-$(date +%Y%m%d)
+
+# Copiar nuevo certificado
+cp nuevo-certificado.pem 20612706702-cert.pem
+
+# Verificar
+php artisan tinker
+>>> $empresa = App\Models\Empresa::find(1);
+>>> $service = app(App\Services\SunatService::class);
+>>> $cert = $service->getCertificate($empresa);
+>>> strlen($cert) > 0
+```
+
+## Validación de Certificado
+
+Antes de usar un certificado en producción:
+
+### Verificar Vigencia
+
+```bash
+openssl x509 -in certificado.pem -noout -dates
+```
+
+Salida esperada:
+```
+notBefore=Jan  1 00:00:00 2024 GMT
+notAfter=Dec 31 23:59:59 2025 GMT
+```
+
+### Verificar Propietario
+
+```bash
+openssl x509 -in certificado.pem -noout -subject
+```
+
+Debe mostrar el RUC de la empresa:
+```
+subject=CN=20612706702, O=MI EMPRESA SAC, C=PE
+```
+
+### Verificar Cadena de Certificación
+
+```bash
+openssl verify -CAfile ca-bundle.crt certificado.pem
+```
+
+### Script de Verificación Completo
+
+```bash
+#!/bin/bash
+# verificar-certificado.sh
+
+CERT_FILE=$1
+
+if [ ! -f "$CERT_FILE" ]; then
+    echo "Error: Certificado no encontrado"
+    exit 1
+fi
+
+echo "=== Información del Certificado ==="
+openssl x509 -in "$CERT_FILE" -noout -subject -issuer -dates
+
+echo ""
+echo "=== Verificando clave privada ==="
+if openssl rsa -in "$CERT_FILE" -check 2>/dev/null; then
+    echo "✓ Clave privada presente y válida"
+else
+    echo "✗ Error: Clave privada no encontrada o inválida"
+    exit 1
+fi
+
+echo ""
+echo "=== Verificando vigencia ==="
+if openssl x509 -in "$CERT_FILE" -noout -checkend 0; then
+    echo "✓ Certificado vigente"
+else
+    echo "✗ Error: Certificado vencido"
+    exit 1
+fi
+
+echo ""
+echo "✓ Certificado listo para usar"
+```
+
+Uso:
+```bash
+chmod +x verificar-certificado.sh
+./verificar-certificado.sh storage/app/sunat/certificados/20612706702-cert.pem
+```
+
+## Troubleshooting
+
+### Error: "No se encontró certificado PEM"
+
+**Causa**: El archivo no existe en la ruta esperada
+
+**Solución**:
+```bash
+# Verificar ruta
+ls -la storage/app/sunat/certificados/
+
+# Crear directorio si no existe
+mkdir -p storage/app/sunat/certificados
+
+# Copiar certificado
+cp /ruta/al/certificado.pem storage/app/sunat/certificados/20612706702-cert.pem
+```
+
+### Error: "Certificado inválido"
+
+**Causa**: Formato incorrecto o certificado corrupto
+
+**Solución**:
+```bash
+# Verificar formato
+file certificado.pem
+# Debe mostrar: "PEM certificate"
+
+# Convertir desde PFX si es necesario
+openssl pkcs12 -in original.pfx -out certificado.pem -nodes
+```
+
+### Error: "La firma es inválida"
+
+**Causa**: Certificado no coincide con la clave privada
+
+**Solución**:
+```bash
+# Verificar que certificado y clave coincidan
+openssl x509 -noout -modulus -in certificado.pem | openssl md5
+openssl rsa -noout -modulus -in clave-privada.key | openssl md5
+# Los hashes MD5 deben ser idénticos
+```
+
+### Error: "Certificado vencido"
+
+**Causa**: El certificado expiró
+
+**Solución**:
+- Adquiera un nuevo certificado
+- En beta, use el certificado de prueba de SUNAT (nunca vence)
+
+## Próximos Pasos
+
+<CardGroup cols={2}>
+  <Card title="Configuración" icon="gear" href="/sunat/setup">
+    Configurar credenciales y endpoints
+  </Card>
+  <Card title="Visión General" icon="book" href="/sunat/overview">
+    Entender la integración completa
+  </Card>
+</CardGroup>

@@ -1,0 +1,333 @@
+---
+title: 'Proveedores'
+description: 'API para gestionar proveedores'
+---
+
+## GET /api/proveedores
+
+Lista todos los proveedores activos de la empresa.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.view`.
+
+### Parámetros de Consulta
+
+<ParamField query="busqueda" type="string">
+  Término de búsqueda (busca en RUC, razón social, dirección, teléfono, email)
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="array">
+  Lista de proveedores activos ordenados por razón social
+  <Expandable title="Estructura">
+    <ResponseField name="proveedor_id" type="integer">
+      ID único del proveedor
+    </ResponseField>
+    <ResponseField name="ruc" type="string">
+      RUC del proveedor (11 dígitos)
+    </ResponseField>
+    <ResponseField name="razon_social" type="string">
+      Razón social del proveedor
+    </ResponseField>
+    <ResponseField name="direccion" type="string">
+      Dirección del proveedor
+    </ResponseField>
+    <ResponseField name="telefono" type="string">
+      Teléfono del proveedor
+    </ResponseField>
+    <ResponseField name="email" type="string">
+      Correo electrónico
+    </ResponseField>
+    <ResponseField name="ubigeo" type="string">
+      Código ubigeo (6 dígitos)
+    </ResponseField>
+    <ResponseField name="departamento" type="string">
+      Departamento
+    </ResponseField>
+    <ResponseField name="provincia" type="string">
+      Provincia
+    </ResponseField>
+    <ResponseField name="distrito" type="string">
+      Distrito
+    </ResponseField>
+    <ResponseField name="estado" type="integer">
+      Estado: 1 (Activo), 0 (Inactivo)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/proveedores?busqueda=distribuidora" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## POST /api/proveedores
+
+Crea un nuevo proveedor.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.create`.
+
+### Parámetros del Body
+
+<ParamField body="ruc" type="string" required>
+  RUC del proveedor (máximo 11 caracteres). Debe ser único por empresa.
+</ParamField>
+
+<ParamField body="razon_social" type="string" required>
+  Razón social del proveedor (máximo 200 caracteres)
+</ParamField>
+
+<ParamField body="direccion" type="string">
+  Dirección del proveedor (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="telefono" type="string">
+  Teléfono del proveedor (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="email" type="string">
+  Correo electrónico (formato válido, máximo 150 caracteres)
+</ParamField>
+
+<ParamField body="ubigeo" type="string">
+  Código ubigeo de 6 dígitos
+</ParamField>
+
+<ParamField body="departamento" type="string">
+  Nombre del departamento (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="provincia" type="string">
+  Nombre de la provincia (máximo 100 caracteres)
+</ParamField>
+
+<ParamField body="distrito" type="string">
+  Nombre del distrito (máximo 100 caracteres)
+</ParamField>
+
+### Proceso Automático
+
+Al crear el proveedor:
+
+1. Asigna automáticamente la empresa del usuario autenticado
+2. Establece el estado como activo (1)
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si el proveedor fue creado exitosamente
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la creación
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Proveedor creado
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X POST "https://api.ejemplo.com/api/proveedores" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ruc": "20612706702",
+    "razon_social": "DISTRIBUIDORA EJEMPLO SAC",
+    "direccion": "AV. INDUSTRIAL 456",
+    "telefono": "014567890",
+    "email": "ventas@ejemplo.com",
+    "ubigeo": "150101",
+    "departamento": "Lima",
+    "provincia": "Lima",
+    "distrito": "Lima"
+  }'
+```
+
+---
+
+## GET /api/proveedores/{id}
+
+Obtiene el detalle de un proveedor específico.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del proveedor
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Proveedor solicitado
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/proveedores/12" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## PUT /api/proveedores/{id}
+
+Actualiza un proveedor existente.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.edit`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del proveedor
+</ParamField>
+
+### Parámetros del Body
+
+Los mismos que en POST (todos opcionales). El RUC debe seguir siendo único.
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la actualización fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la actualización
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  Proveedor actualizado
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X PUT "https://api.ejemplo.com/api/proveedores/12" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "telefono": "014445556",
+    "email": "contacto@ejemplo.com"
+  }'
+```
+
+---
+
+## DELETE /api/proveedores/{id}
+
+Elimina (desactiva) un proveedor.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.delete`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del proveedor
+</ParamField>
+
+### Proceso
+
+No elimina físicamente el proveedor. Cambia su estado a 0 (Inactivo).
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la eliminación fue exitosa
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Mensaje confirmando la eliminación
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X DELETE "https://api.ejemplo.com/api/proveedores/12" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## GET /api/proveedores/{id}/detalles
+
+Obtiene detalles completos de un proveedor incluyendo estadísticas y últimas compras.
+
+### Autenticación
+Requiere autenticación con token Bearer y permiso `proveedores.view`.
+
+### Parámetros de Ruta
+
+<ParamField path="id" type="integer" required>
+  ID del proveedor
+</ParamField>
+
+### Respuesta
+
+<ResponseField name="success" type="boolean">
+  Indica si la operación fue exitosa
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  <ResponseField name="proveedor" type="object">
+    Datos completos del proveedor
+  </ResponseField>
+  <ResponseField name="stats" type="object">
+    <ResponseField name="total_count" type="integer">
+      Total de compras realizadas
+    </ResponseField>
+    <ResponseField name="total_monto_pen" type="number">
+      Monto total en soles
+    </ResponseField>
+    <ResponseField name="total_monto_usd" type="number">
+      Monto total en dólares
+    </ResponseField>
+  </ResponseField>
+  <ResponseField name="compras" type="array">
+    Últimas 10 compras del proveedor
+  </ResponseField>
+</ResponseField>
+
+### Ejemplo de Uso
+
+```bash
+curl -X GET "https://api.ejemplo.com/api/proveedores/12/detalles" \
+  -H "Authorization: Bearer {token}"
+```
+
+---
+
+## Códigos de Error
+
+- **404 Not Found**: Proveedor no encontrado.
+- **422 Unprocessable Entity**: Error de validación (RUC duplicado, email inválido, etc.).
+- **500 Internal Server Error**: Error en el servidor.
+
+## Notas Importantes
+
+- El **RUC debe ser único** por empresa. No puede haber dos proveedores con el mismo RUC en la misma empresa.
+- Los proveedores no se eliminan físicamente, solo se desactivan (estado = 0).
+- El endpoint GET `/api/proveedores` solo muestra proveedores activos.
+- Todos los proveedores están asociados a una empresa específica.
+- Las estadísticas y compras se calculan dinámicamente desde la tabla `compras`.

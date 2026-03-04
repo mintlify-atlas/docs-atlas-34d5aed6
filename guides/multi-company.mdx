@@ -1,0 +1,316 @@
+---
+title: 'Multi-Empresa'
+description: 'Gestión de múltiples empresas en el sistema de facturación electrónica'
+---
+
+## Visión General
+
+El sistema de facturación electrónica permite gestionar múltiples empresas desde una única instalación. Cada empresa puede tener sus propios usuarios, configuraciones, series de comprobantes y datos fiscales independientes.
+
+## Modelo de Datos
+
+### Empresa
+
+El modelo `Empresa` representa una empresa registrada en el sistema:
+
+```php
+App\Models\Empresa
+```
+
+**Ubicación**: `app/Models/Empresa.php`
+
+**Campos principales**:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id_empresa` | integer | Identificador único de la empresa (PK) |
+| `ruc` | string | RUC de la empresa |
+| `razon_social` | string | Razón social completa |
+| `comercial` | string | Nombre comercial |
+| `direccion` | string | Dirección fiscal |
+| `email` | string | Correo electrónico |
+| `telefono` | string | Teléfono principal |
+| `user_sol` | string | Usuario SOL para SUNAT |
+| `clave_sol` | string | Clave SOL para SUNAT |
+| `logo` | string | Ruta del logo de la empresa |
+| `ubigeo` | string | Código de ubigeo |
+| `distrito` | string | Distrito |
+| `provincia` | string | Provincia |
+| `departamento` | string | Departamento |
+| `igv` | decimal | Tasa de IGV (por defecto 18.00) |
+| `estado` | string | Estado de la empresa (1=activo, 0=inactivo) |
+| `modo` | string | Modo de operación (beta/producción) |
+
+### Relación con Usuarios
+
+Cada usuario pertenece a una empresa específica a través del campo `id_empresa` en el modelo `User`:
+
+```php
+// En app/Models/User.php
+public function empresa()
+{
+    return $this->belongsTo(\App\Models\Empresa::class, 'id_empresa', 'id_empresa');
+}
+```
+
+## Funcionamiento Multi-Empresa
+
+### Usuarios Administradores
+
+Los usuarios con `rol_id = 1` (Administradores) tienen privilegios especiales:
+
+- **Acceso a todas las empresas**: Pueden ver y gestionar datos de cualquier empresa activa
+- **Cambio de empresa**: Pueden cambiar de contexto entre empresas mediante el endpoint `switchEmpresa`
+- **Sin restricciones de permisos**: Tienen acceso automático a todos los módulos
+
+### Usuarios Normales
+
+Los usuarios con roles diferentes al administrador (`rol_id != 1`):
+
+- **Empresa fija**: Solo pueden acceder a los datos de su empresa asignada (`id_empresa`)
+- **Permisos limitados**: Sus acciones están controladas por el sistema de permisos
+- **Sin cambio de empresa**: No pueden cambiar de contexto empresarial
+
+## Autenticación y Empresas
+
+### Login
+
+Al iniciar sesión, el sistema retorna información sobre las empresas disponibles:
+
+```json
+{
+  "success": true,
+  "token": "...",
+  "user": {
+    "id": 1,
+    "name": "Juan Pérez",
+    "email": "juan@example.com",
+    "rol_id": 1,
+    "id_empresa": 3
+  },
+  "empresas": [
+    {
+      "id_empresa": 1,
+      "comercial": "Mi Empresa SAC",
+      "ruc": "20612706702",
+      "razon_social": "MI EMPRESA SOCIEDAD ANONIMA CERRADA",
+      "logo": "logos/empresa1.png",
+      "direccion": "Av. Principal 123"
+    }
+  ],
+  "permissions": ["ventas.view", "ventas.create", ...]
+}
+```
+
+**Comportamiento por rol**:
+
+- **Admin (`rol_id = 1`)**: Retorna todas las empresas activas (`estado = '1'`)
+- **Usuario normal**: Retorna solo la empresa asignada al usuario
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:52-66`
+
+### Cambiar de Empresa
+
+**Endpoint**: `POST /api/auth/switch-empresa`
+
+**Parámetros**:
+```json
+{
+  "id_empresa": 2
+}
+```
+
+**Respuesta exitosa**:
+```json
+{
+  "success": true,
+  "message": "Empresa cambiada exitosamente",
+  "id_empresa": 2
+}
+```
+
+**Restricciones**:
+- Solo disponible para usuarios administradores (`rol_id = 1`)
+- La empresa debe existir y estar activa (`estado = '1'`)
+- Usuarios normales reciben error 403
+
+**Implementación**: `app/Http/Controllers/Api/AuthController.php:169-204`
+
+## Alcance de Datos por Empresa
+
+Todas las tablas principales del sistema incluyen el campo `id_empresa` para filtrar datos por empresa:
+
+- **Ventas** (`ventas.id_empresa`)
+- **Compras** (`compras.id_empresa`)
+- **Productos** (`producto.id_empresa`)
+- **Clientes** (`cliente.id_empresa`)
+- **Proveedores** (`proveedores.id_empresa`)
+- **Cotizaciones** (`cotizaciones.id_empresa`)
+- **Guías de Remisión** (`guias_remision.id_empresa`)
+- **Notas de Crédito/Débito** (`notas_credito.id_empresa`, `notas_debito.id_empresa`)
+
+### Ejemplo de Consulta
+
+```php
+// Obtener todas las ventas de la empresa actual del usuario
+$ventas = Venta::where('id_empresa', $user->id_empresa)->get();
+
+// Los administradores deben especificar la empresa activa
+if ($user->rol_id == 1) {
+    $ventas = Venta::where('id_empresa', $empresaActivaId)->get();
+}
+```
+
+## Archivos SUNAT por Empresa
+
+Los archivos XML, CDR y certificados se almacenan organizados por RUC de empresa:
+
+```
+storage/app/sunat/
+├── xml/
+│   ├── 20612706702/          # XML por RUC
+│   │   ├── 20612706702-01-F001-00000001.xml
+│   │   └── 20612706702-03-B001-00000023.xml
+│   └── 20000000001/
+│       └── 20000000001-09-T001-00000001.xml
+├── cdr/
+│   ├── 20612706702/          # CDR por RUC
+│   │   ├── R-20612706702-01-F001-00000001.zip
+│   │   └── R-20612706702-03-B001-00000023.zip
+│   └── 20000000001/
+└── certificados/             # Certificados digitales
+    ├── 20612706702.pem
+    └── 20000000001.pem
+```
+
+**Configuración**: `config/sunat.php`
+
+## Configuración de Empresa
+
+Cada empresa puede tener configuraciones independientes:
+
+### Credenciales SUNAT
+
+- **Usuario SOL**: `user_sol` - Usuario para webservices SUNAT
+- **Clave SOL**: `clave_sol` - Contraseña para webservices SUNAT
+
+### Modo de Operación
+
+- **Beta**: Para pruebas (usa RUC 20000000001)
+- **Producción**: Para emisión real de comprobantes
+
+### Personalización
+
+- **Logo**: Imagen que aparece en los comprobantes PDF
+- **Propaganda**: Texto adicional para pie de comprobante
+- **Tipo de impresión**: Configuración de formato de impresión
+
+## Endpoints de Empresas
+
+### Listar Empresas
+
+**Endpoint**: `GET /api/empresas`
+
+**Respuesta**:
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id_empresa": 1,
+      "ruc": "20612706702",
+      "razon_social": "MI EMPRESA SAC",
+      "comercial": "Mi Empresa",
+      "direccion": "Av. Principal 123",
+      "email": "contacto@miempresa.com",
+      "estado": "1"
+    }
+  ]
+}
+```
+
+### Obtener Empresa
+
+**Endpoint**: `GET /api/empresas/{id}`
+
+### Actualizar Empresa
+
+**Endpoint**: `POST /api/empresas/{id}`
+
+**Nota**: Usa POST en lugar de PUT/PATCH para soportar `FormData` con carga de logo.
+
+### Eliminar Logo
+
+**Endpoint**: `DELETE /api/empresas/{id}/logo`
+
+## Mejores Prácticas
+
+### En Controladores
+
+```php
+public function index(Request $request)
+{
+    $user = $request->user();
+    
+    // Siempre filtrar por empresa del usuario
+    $query = Venta::where('id_empresa', $user->id_empresa);
+    
+    return response()->json([
+        'success' => true,
+        'data' => $query->get()
+    ]);
+}
+```
+
+### En Servicios
+
+```php
+public function generarXML($venta)
+{
+    // Obtener la empresa de la venta
+    $empresa = Empresa::findOrFail($venta->id_empresa);
+    
+    // Usar credenciales de la empresa
+    $config = [
+        'user_sol' => $empresa->user_sol,
+        'clave_sol' => $empresa->clave_sol,
+        'ruc' => $empresa->ruc
+    ];
+    
+    // ...
+}
+```
+
+### Validaciones
+
+```php
+// Al crear un registro, asignar la empresa del usuario
+$venta = new Venta();
+$venta->id_empresa = $request->user()->id_empresa;
+$venta->save();
+
+// Al actualizar, verificar que pertenece a la empresa del usuario
+$venta = Venta::where('id', $id)
+    ->where('id_empresa', $request->user()->id_empresa)
+    ->firstOrFail();
+```
+
+## Consideraciones
+
+### Seguridad
+
+- **Aislamiento de datos**: Cada empresa solo ve sus propios datos
+- **Validación estricta**: Siempre verificar `id_empresa` en consultas
+- **Credenciales separadas**: Cada empresa tiene sus propias credenciales SUNAT
+
+### Rendimiento
+
+- **Índices**: Todas las tablas principales tienen índice en `id_empresa`
+- **Caché**: Considerar cachear datos de empresa activa en sesión
+
+### Migración
+
+- Si viene de un sistema mono-empresa, asegúrese de:
+  - Asignar `id_empresa` a todos los registros existentes
+  - Crear al menos una empresa en la tabla `empresas`
+  - Actualizar `id_empresa` en usuarios existentes

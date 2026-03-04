@@ -1,0 +1,367 @@
+---
+title: 'Reportes PDF'
+description: 'Generación de reportes en PDF usando mPDF con autenticación por token'
+---
+
+## Descripción General
+
+El sistema genera reportes PDF para documentos electrónicos (facturas, boletas, guías de remisión, cotizaciones y órdenes de compra) utilizando la librería **mPDF**. Los PDFs se pueden generar en dos formatos: **A4** (tamaño estándar) y **Ticket** (80mm para impresoras térmicas).
+
+## Controladores de PDF Disponibles
+
+### VentaPdfController
+
+Genera PDFs para ventas (facturas, boletas y notas de venta).
+
+**Ubicación:** `app/Http/Controllers/Reportes/VentaPdfController.php`
+
+#### Métodos Disponibles
+
+- `generarA4($id)` - Genera PDF en formato A4
+- `generarTicket($id)` - Genera PDF en formato Ticket (80mm)
+
+**Características:**
+- Incluye código QR con datos del comprobante
+- Soporte para plantillas de impresión personalizadas
+- Muestra información de empresa, cliente y productos
+- Incluye totales, subtotales e IGV
+
+### GuiaRemisionPdfController
+
+Genera PDFs para guías de remisión electrónicas.
+
+**Ubicación:** `app/Http/Controllers/Reportes/GuiaRemisionPdfController.php`
+
+#### Métodos Disponibles
+
+- `generarA4($id)` - Genera PDF en formato A4
+
+**Características:**
+- Código QR para verificación
+- Información de traslado (origen, destino, transportista)
+- Listado de productos transportados
+- Soporte para plantillas personalizadas
+
+### CotizacionPdfController
+
+Genera PDFs para cotizaciones.
+
+**Ubicación:** `app/Http/Controllers/Reportes/CotizacionPdfController.php`
+
+#### Métodos Disponibles
+
+- `generarA4($id)` - Genera PDF en formato A4
+- `generarTicket($id)` - Genera PDF en formato Ticket (80mm)
+
+### CompraPdfController
+
+Genera PDFs para órdenes de compra.
+
+**Ubicación:** `app/Http/Controllers/Reportes/CompraPdfController.php`
+
+#### Métodos Disponibles
+
+- `generarA4($id)` - Genera PDF en formato A4
+- `generarTicket($id)` - Genera PDF en formato Ticket (80mm)
+
+## Configuración de mPDF
+
+### Formato A4
+
+```php
+$mpdf = new Mpdf([
+    'mode' => 'utf-8',
+    'format' => 'A4',
+    'tempDir' => storage_path('app/mpdf'),
+    'margin_left' => 15,
+    'margin_right' => 15,
+    'margin_top' => 15,
+    'margin_bottom' => 15,
+    'img_dpi' => 96,
+    'autoPadding' => true,
+]);
+```
+
+### Formato Ticket (80mm)
+
+```php
+$mpdf = new Mpdf([
+    'mode' => 'utf-8',
+    'format' => [80, 297], // 80mm ancho x 297mm alto
+    'tempDir' => storage_path('app/mpdf'),
+    'margin_left' => 5,
+    'margin_right' => 5,
+    'margin_top' => 5,
+    'margin_bottom' => 5,
+    'img_dpi' => 96,
+]);
+```
+
+## Rutas de Acceso
+
+### Rutas Web (con TokenFromQuery middleware)
+
+Las rutas de PDF están configuradas en `routes/web.php`:
+
+```php
+// PDFs de ventas
+Route::get('/reporteNV/ticket.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\VentaPdfController::class)
+        ->generarTicket($request->get('id'));
+});
+
+Route::get('/reporteNV/a4.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\VentaPdfController::class)
+        ->generarA4($request->get('id'));
+});
+
+// PDFs de guías de remisión
+Route::get('/reporteGR/a4.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\GuiaRemisionPdfController::class)
+        ->generarA4($request->get('id'));
+});
+
+// PDFs de cotizaciones
+Route::get('/reporteCOT/ticket.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\CotizacionPdfController::class)
+        ->generarTicket($request->get('id'));
+});
+
+Route::get('/reporteCOT/a4.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\CotizacionPdfController::class)
+        ->generarA4($request->get('id'));
+});
+
+// PDFs de compras
+Route::get('/reporteOC/ticket.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\CompraPdfController::class)
+        ->generarTicket($request->get('id'));
+});
+
+Route::get('/reporteOC/a4.php', function (Request $request) {
+    return app(\App\Http\Controllers\Reportes\CompraPdfController::class)
+        ->generarA4($request->get('id'));
+});
+```
+
+## Autenticación con Token en URL
+
+### Middleware TokenFromQuery
+
+Para permitir la descarga de PDFs desde el navegador usando enlaces directos, el sistema utiliza el middleware `TokenFromQuery` que acepta el token de autenticación como parámetro en la URL.
+
+**Ubicación:** `app/Http/Middleware/TokenFromQuery.php`
+
+```php
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+
+class TokenFromQuery
+{
+    public function handle(Request $request, Closure $next)
+    {
+        if ($request->has('token') && !$request->bearerToken()) {
+            $request->headers->set('Authorization', 'Bearer ' . $request->query('token'));
+        }
+
+        return $next($request);
+    }
+}
+```
+
+### Cómo Funciona
+
+1. El middleware revisa si existe un parámetro `token` en la URL
+2. Si existe y no hay un token Bearer en los headers, lo agrega automáticamente
+3. Permite autenticación tanto por header como por query string
+
+### Configuración en api.php
+
+El middleware se aplica a todas las rutas protegidas:
+
+```php
+Route::middleware(['token.query', 'auth:sanctum'])->group(function () {
+    // Rutas protegidas
+});
+```
+
+## Ejemplos de Uso
+
+### Descargar PDF de Venta (Formato A4)
+
+```javascript
+// En el frontend
+const token = localStorage.getItem('auth_token');
+const ventaId = 123;
+const url = `/reporteNV/a4.php?id=${ventaId}&token=${token}`;
+
+// Abrir en nueva ventana
+window.open(url, '_blank');
+```
+
+### Descargar PDF de Venta (Formato Ticket)
+
+```javascript
+const token = localStorage.getItem('auth_token');
+const ventaId = 123;
+const url = `/reporteNV/ticket.php?id=${ventaId}&token=${token}`;
+
+window.open(url, '_blank');
+```
+
+### Descargar PDF de Guía de Remisión
+
+```javascript
+const token = localStorage.getItem('auth_token');
+const guiaId = 45;
+const url = `/reporteGR/a4.php?id=${guiaId}&token=${token}`;
+
+window.open(url, '_blank');
+```
+
+### Descargar PDF de Cotización
+
+```javascript
+const token = localStorage.getItem('auth_token');
+const cotizacionId = 67;
+const url = `/reporteCOT/a4.php?id=${cotizacionId}&token=${token}`;
+
+window.open(url, '_blank');
+```
+
+### Descargar PDF de Orden de Compra
+
+```javascript
+const token = localStorage.getItem('auth_token');
+const compraId = 89;
+const url = `/reporteOC/a4.php?id=${compraId}&token=${token}`;
+
+window.open(url, '_blank');
+```
+
+## Generación de Código QR
+
+Los PDFs de documentos electrónicos incluyen códigos QR generados con el helper `QrHelper`:
+
+```php
+use App\Helpers\QrHelper;
+
+// Para ventas
+$qrString = QrHelper::buildQrStringVenta($venta);
+$qrBase64 = QrHelper::generarQrBase64($qrString);
+
+// Para guías de remisión
+$qrString = QrHelper::buildQrStringGuia($guia);
+$qrBase64 = QrHelper::generarQrBase64($qrString);
+```
+
+El código QR contiene información según el estándar SUNAT:
+- RUC del emisor
+- Tipo de documento
+- Serie y número
+- Fecha de emisión
+- Totales
+- Hash del documento (si está firmado)
+
+## Plantillas de Impresión
+
+El sistema soporta plantillas personalizadas por empresa:
+
+```php
+$plantilla = $venta->empresa
+    ? PlantillaImpresion::obtenerPara($venta->empresa->id_empresa)
+    : null;
+
+// Pasar plantilla a la vista
+$html = view('reportes.venta-a4', compact('venta', 'qrBase64', 'consultaUrl', 'plantilla'))->render();
+```
+
+## Manejo de Errores
+
+Todos los controladores de PDF manejan dos tipos de errores:
+
+### Documento No Encontrado (404)
+
+```php
+try {
+    $venta = Venta::with([...])->findOrFail($id);
+    // ...
+} catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+    return response()->view('errors.pdf-no-encontrado', [], 404);
+}
+```
+
+### Error General (500)
+
+```php
+catch (\Exception $e) {
+    \Illuminate\Support\Facades\Log::error('Error Venta A4: ' . $e->getMessage(), [
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]);
+    return response()->json([
+        'success' => false, 
+        'error' => $e->getMessage(),
+        'trace' => config('app.debug') ? $e->getTrace() : null
+    ], 500);
+}
+```
+
+## Configuración del Título PDF
+
+Cada PDF tiene un título descriptivo:
+
+```php
+// Ventas
+$mpdf->SetTitle(
+    $venta->tipoDocumento->nombre . ' - ' . 
+    $venta->serie . '-' . 
+    str_pad($venta->numero, 6, '0', STR_PAD_LEFT)
+);
+
+// Guías de Remisión
+$serie = $guia->serie . '-' . str_pad($guia->numero, 8, '0', STR_PAD_LEFT);
+$mpdf->SetTitle("GUIA DE REMISION - {$serie}");
+
+// Cotizaciones
+$numero = str_pad($cotizacion->numero, 6, '0', STR_PAD_LEFT);
+$mpdf->SetTitle("Cotización COT-{$numero}");
+```
+
+## Renderizado y Salida
+
+Los PDFs se renderizan desde vistas Blade:
+
+```php
+// Renderizar vista a HTML
+$html = view('reportes.venta-a4', compact('venta', 'qrBase64', 'consultaUrl', 'plantilla'))->render();
+
+// Generar PDF
+$mpdf->WriteHTML($html);
+
+// Salida en navegador (Inline)
+$mpdf->Output(
+    "Factura-{$venta->serie}-{$numero}.pdf",
+    'I' // I = inline, D = download, F = file, S = string
+);
+```
+
+## Mejores Prácticas
+
+1. **Siempre incluir el token** en las URLs de PDF para mantener la autenticación
+2. **Usar formato A4** para impresiones formales y archivo
+3. **Usar formato Ticket** para impresoras térmicas punto de venta
+4. **Configurar tempDir** apuntando a `storage/app/mpdf` para archivos temporales
+5. **Ajustar márgenes** según el tipo de documento y formato
+6. **Incluir código QR** en documentos electrónicos para cumplir normativa SUNAT
+7. **Registrar errores** en logs para debugging y auditoría
+8. **Cargar relaciones necesarias** con `with()` para evitar queries N+1
+
+## Directorios de Almacenamiento
+
+- **Archivos temporales mPDF:** `storage/app/mpdf/`
+- **Vistas de reportes:** `resources/views/reportes/`
+- **Plantillas de impresión:** Tabla `plantillas_impresion` en base de datos

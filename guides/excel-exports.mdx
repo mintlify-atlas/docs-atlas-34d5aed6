@@ -1,0 +1,517 @@
+---
+title: 'Exportaciones Excel'
+description: 'Generación de reportes y exportaciones en Excel usando PhpSpreadsheet'
+---
+
+## Descripción General
+
+El sistema utiliza **PhpSpreadsheet** para generar exportaciones en formato Excel (.xlsx) con estilos profesionales, incluyendo encabezados formateados, bordes, colores alternados en filas y fórmulas para totales.
+
+## Controladores de Exportación
+
+### ProductoExportController
+
+Maneja la exportación e importación de productos.
+
+**Ubicación:** `app/Http/Controllers/Exports/ProductoExportController.php`
+
+#### Métodos Disponibles
+
+- `descargarPlantilla(Request $request)` - Descarga plantilla Excel para importar productos
+- `descargarExcel(Request $request)` - Exporta productos a Excel con filtros
+
+### VentaExportController
+
+Genera múltiples tipos de reportes de ventas en Excel, TXT y PDF.
+
+**Ubicación:** `app/Http/Controllers/Exports/VentaExportController.php`
+
+#### Métodos Disponibles
+
+- `exportarTxt(Request $request)` - Exporta registro de ventas en formato PLE 14.1 (SUNAT)
+- `exportarExcel(Request $request)` - Exporta ventas en formato Excel simple
+- `reporteRVTA(Request $request)` - Registro de Ventas formato SUNAT en Excel
+- `reporteVentasProducto(Request $request)` - Reporte de ventas agrupadas por producto
+- `reporteGanancias(Request $request)` - Reporte de ganancias por venta
+- `exportarPdf(Request $request)` - Exporta reporte de ventas en PDF
+
+## Rutas de Exportación
+
+### Rutas API (requieren autenticación)
+
+Configuradas en `routes/api.php`:
+
+```php
+// Productos
+Route::get('productos/plantilla-excel', [ProductoExportController::class, 'descargarPlantilla']);
+Route::get('productos/descargar-excel', [ProductoExportController::class, 'descargarExcel']);
+
+// Ventas
+Route::get('ventas/exportar-txt', [VentaExportController::class, 'exportarTxt'])
+    ->middleware('permission:ventas.view');
+Route::get('ventas/exportar-excel', [VentaExportController::class, 'exportarExcel'])
+    ->middleware('permission:ventas.view');
+Route::get('ventas/reporte-rvta', [VentaExportController::class, 'reporteRVTA'])
+    ->middleware('permission:ventas.view');
+Route::get('ventas/reporte-producto', [VentaExportController::class, 'reporteVentasProducto'])
+    ->middleware('permission:ventas.view');
+Route::get('ventas/reporte-ganancias', [VentaExportController::class, 'reporteGanancias'])
+    ->middleware('permission:ventas.view');
+```
+
+## Uso de PhpSpreadsheet
+
+### Importaciones Necesarias
+
+```php
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+```
+
+### Crear un Nuevo Spreadsheet
+
+```php
+$spreadsheet = new Spreadsheet();
+$sheet = $spreadsheet->getActiveSheet();
+```
+
+### Configurar Encabezados
+
+```php
+$headers = ['Código', 'Nombre', 'Categoría', 'Stock', 'Precio'];
+$col = 'A';
+foreach ($headers as $header) {
+    $sheet->setCellValue($col . '1', $header);
+    $col++;
+}
+```
+
+### Aplicar Estilos a Encabezados
+
+```php
+$headerStyle = [
+    'font' => [
+        'bold' => true,
+        'size' => 11,
+        'color' => ['rgb' => 'FFFFFF']
+    ],
+    'fill' => [
+        'fillType' => Fill::FILL_SOLID,
+        'startColor' => ['rgb' => '90BFEB']
+    ],
+    'borders' => [
+        'allBorders' => [
+            'borderStyle' => Border::BORDER_THIN,
+            'color' => ['rgb' => '000000']
+        ]
+    ],
+    'alignment' => [
+        'horizontal' => Alignment::HORIZONTAL_CENTER,
+        'vertical' => Alignment::VERTICAL_CENTER
+    ]
+];
+
+$sheet->getStyle('A1:K1')->applyFromArray($headerStyle);
+```
+
+### Filas con Colores Alternados
+
+```php
+foreach ($productos as $index => $producto) {
+    $row = $index + 5; // Comenzar después de encabezados
+    
+    // Datos
+    $sheet->setCellValue('A' . $row, $producto->codigo);
+    $sheet->setCellValue('B' . $row, $producto->nombre);
+    
+    // Color alternado
+    if ($row % 2 == 0) {
+        $sheet->getStyle('A' . $row . ':J' . $row)->applyFromArray([
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'F9FAFB']
+            ]
+        ]);
+    }
+}
+```
+
+## Plantilla de Importación de Productos
+
+### Características
+
+- **11 columnas**: Código, Producto, Detalle, Categoría, Unidad, Moneda, Costo, Stock, Precio Venta, Precio Distribuidor, Precio Mayorista
+- **Fila de ejemplo** con formato destacado y comentario
+- **Anchos de columna** predefinidos para mejor legibilidad
+- **Validación visual** con colores diferenciados
+
+### Estructura de la Plantilla
+
+```php
+$headers = [
+    'A1' => 'Código',
+    'B1' => 'Producto',
+    'C1' => 'Detalle',
+    'D1' => 'Categoría',
+    'E1' => 'Unidad',
+    'F1' => 'Moneda',
+    'G1' => 'Costo',
+    'H1' => 'Stock',
+    'I1' => 'Precio Venta',
+    'J1' => 'Precio Distribuidor',
+    'K1' => 'Precio Mayorista',
+];
+```
+
+### Fila de Ejemplo
+
+```php
+// Estilo para fila de ejemplo
+$ejemploStyle = [
+    'font' => [
+        'italic' => true,
+        'color' => ['rgb' => '5C4A00'],
+        'size' => 10
+    ],
+    'fill' => [
+        'fillType' => Fill::FILL_SOLID,
+        'startColor' => ['rgb' => 'FFF9C4'] // Amarillo claro
+    ],
+    'borders' => [
+        'allBorders' => [
+            'borderStyle' => Border::BORDER_THIN,
+            'color' => ['rgb' => 'F0C040']
+        ]
+    ]
+];
+
+$sheet->setCellValue('A2', 'PROD-001');
+$sheet->setCellValue('B2', 'Nombre del producto');
+$sheet->setCellValue('C2', 'Descripción opcional');
+$sheet->setCellValue('D2', 'Repuestos');
+$sheet->setCellValue('E2', 'UNIDAD');
+$sheet->setCellValue('F2', 'PEN');
+$sheet->setCellValue('G2', 10.50);
+$sheet->setCellValue('H2', 100);
+$sheet->setCellValue('I2', 15.00);
+$sheet->setCellValue('J2', 13.00);
+$sheet->setCellValue('K2', 12.00);
+
+$sheet->getStyle('A2:K2')->applyFromArray($ejemploStyle);
+```
+
+### Comentario en Celda
+
+```php
+$sheet->getComment('A2')->getText()
+    ->createTextRun('Fila de ejemplo — eliminar antes de importar');
+$sheet->getComment('A2')->setWidth('200pt');
+$sheet->getComment('A2')->setHeight('40pt');
+```
+
+### Descargar Plantilla
+
+```javascript
+// Frontend
+const token = localStorage.getItem('auth_token');
+const url = `/api/productos/plantilla-excel?token=${token}`;
+
+window.open(url, '_blank');
+```
+
+## Exportación de Productos
+
+### Con Filtros de Búsqueda
+
+```php
+$almacen = $request->get('almacen', '1');
+$busqueda = $request->get('texto', '');
+
+$query = DB::table("view_productos_$almacen")
+    ->where('id_empresa', $user->id_empresa);
+
+if (!empty($busqueda)) {
+    $query->where(function($q) use ($busqueda) {
+        $q->where('codigo', 'like', "%$busqueda%")
+          ->orWhere('nombre', 'like', "%$busqueda%")
+          ->orWhere('descripcion', 'like', "%$busqueda%")
+          ->orWhere('cod_barra', 'like', "%$busqueda%");
+    });
+}
+
+$productos = $query->orderBy('codigo')->get();
+```
+
+### Título y Metadata
+
+```php
+// Título principal
+$sheet->setCellValue('A1', 'REPORTE DE PRODUCTOS - ALMACÉN ' . $almacen);
+$sheet->mergeCells('A1:J1');
+$sheet->getStyle('A1')->applyFromArray([
+    'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => 'FFFFFF']],
+    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F97316']],
+    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+]);
+
+// Fecha de generación
+$sheet->setCellValue('A2', 'Generado: ' . date('d/m/Y H:i:s'));
+$sheet->mergeCells('A2:J2');
+```
+
+### Totales con Fórmulas
+
+```php
+$totalRow = $row + 1;
+$sheet->setCellValue('E' . $totalRow, 'TOTAL:');
+$sheet->setCellValue('F' . $totalRow, '=SUM(F' . ($headerRow + 1) . ':F' . ($row - 1) . ')');
+
+$sheet->getStyle('E' . $totalRow . ':F' . $totalRow)->applyFromArray([
+    'font' => ['bold' => true],
+    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF3C7']],
+    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
+]);
+```
+
+## Exportación de Ventas
+
+### Registro de Ventas Simple
+
+```javascript
+// Exportar ventas de un periodo
+const mes = '03';
+const anio = '2026';
+const token = localStorage.getItem('auth_token');
+
+const url = `/api/ventas/exportar-excel?mes=${mes}&anio=${anio}`;
+
+fetch(url, {
+    headers: {
+        'Authorization': `Bearer ${token}`
+    }
+})
+.then(response => response.blob())
+.then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ventas-${anio}-${mes}.xlsx`;
+    a.click();
+});
+```
+
+### Registro de Ventas SUNAT (RVTA)
+
+Formato oficial para presentación a SUNAT:
+
+```javascript
+const url = `/api/ventas/reporte-rvta?mes=${mes}&anio=${anio}`;
+```
+
+**Columnas incluidas:**
+- CUO (Código Único de Operación)
+- Fecha Emisión
+- Tipo Doc / Serie / Número
+- Tipo Doc Cliente / Nro Doc Cliente / Razón Social
+- Base Imponible / IGV / Exonerado / Inafecto
+- ISC / ICBPER / Otros
+- Total / Moneda / Estado
+
+### Reporte de Ventas por Producto
+
+Agrupa y suma ventas por producto:
+
+```javascript
+const url = `/api/ventas/reporte-producto?mes=${mes}&anio=${anio}`;
+```
+
+**Columnas incluidas:**
+- Código
+- Producto
+- Unidad
+- Cantidad Vendida
+- Número de Ventas
+- Subtotal / IGV / Total
+
+### Reporte de Ganancias
+
+Calcula ganancia = Precio Venta - Costo:
+
+```javascript
+const url = `/api/ventas/reporte-ganancias?mes=${mes}&anio=${anio}`;
+```
+
+**Columnas incluidas:**
+- Documento / Fecha / Cliente
+- Producto / Cantidad
+- Precio Venta / Costo
+- Total Venta / Ganancia
+
+**Características especiales:**
+- Ganancias positivas en verde (`059669`)
+- Ganancias negativas en rojo (`DC2626`)
+- Cálculo de margen de ganancia en porcentaje
+
+## Exportación TXT (Formato PLE SUNAT)
+
+### Registro de Ventas PLE 14.1
+
+Formato texto con 35 campos separados por pipe (`|`):
+
+```php
+$campos = [
+    $periodo,           // 1. Periodo (YYYYMM00)
+    $cuo,               // 2. CUO (M000000001)
+    'M-1',              // 3. Correlativo asiento
+    $fechaEmision,      // 4. Fecha emisión (DD/MM/YYYY)
+    $fechaVencimiento,  // 5. Fecha vencimiento
+    $codSunat,          // 6. Tipo comprobante (01, 03, 07, etc.)
+    $venta->serie,      // 7. Serie
+    $numero,            // 8. Número (8 dígitos)
+    '',                 // 9. Número final
+    $tipoDocId,         // 10. Tipo doc identidad (1=DNI, 6=RUC)
+    $docCliente,        // 11. Número doc identidad
+    $nombreCliente,     // 12. Razón social
+    '0.00',             // 13. Exportación
+    $baseImponible,     // 14. Base imponible gravada
+    '0.00',             // 15. Descuento base
+    $igv,               // 16. IGV
+    // ... hasta 35 campos
+];
+
+$lines[] = implode('|', $campos) . '|';
+```
+
+### Nombre de Archivo PLE
+
+```php
+$indicadorContenido = count($lines) > 0 ? '1' : '0';
+$filename = "LE{$ruc}{$periodo}140100{$indicadorContenido}111.TXT";
+// Ejemplo: LE20612706702202603001401001111.TXT
+```
+
+### Descargar TXT
+
+```javascript
+const url = `/api/ventas/exportar-txt?mes=${mes}&anio=${anio}`;
+
+fetch(url, {
+    headers: { 'Authorization': `Bearer ${token}` }
+})
+.then(response => response.blob())
+.then(blob => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `registro-ventas-${anio}-${mes}.txt`;
+    a.click();
+});
+```
+
+## Configuración de Anchos de Columna
+
+```php
+// Anchos fijos
+$sheet->getColumnDimension('A')->setWidth(15);
+$sheet->getColumnDimension('B')->setWidth(35);
+$sheet->getColumnDimension('C')->setWidth(40);
+
+// Auto ajuste
+foreach (range('A', 'J') as $col) {
+    $sheet->getColumnDimension($col)->setAutoSize(true);
+}
+
+// Altura de fila
+$sheet->getRowDimension(1)->setRowHeight(32);
+```
+
+## Formato de Números
+
+```php
+// Formato con 2 decimales y separador de miles
+$sheet->getStyle('E5:G' . $row)->getNumberFormat()->setFormatCode('#,##0.00');
+
+// Formato entero con separador de miles
+$sheet->getStyle('D5:E' . $row)->getNumberFormat()->setFormatCode('#,##0');
+```
+
+## Generar y Descargar Archivo
+
+### Método 1: Headers y Output Directo
+
+```php
+$writer = new Xlsx($spreadsheet);
+$filename = 'productos-' . date('Y-m-d-His') . '.xlsx';
+
+header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+header('Content-Disposition: attachment;filename="' . $filename . '"');
+header('Cache-Control: max-age=0');
+
+$writer->save('php://output');
+exit;
+```
+
+### Método 2: Archivo Temporal
+
+```php
+$writer = new Xlsx($spreadsheet);
+$fileName = 'plantilla-productos-importar.xlsx';
+$tempFile = tempnam(sys_get_temp_dir(), $fileName);
+$writer->save($tempFile);
+
+return response()->download($tempFile, $fileName)->deleteFileAfterSend(true);
+```
+
+## Importación de Productos
+
+Ver `ProductoImportController` para la lectura e importación de archivos Excel:
+
+**Rutas disponibles:**
+```php
+Route::post('productos/leer-excel', [ProductoImportController::class, 'leerExcel']);
+Route::post('productos/importar-lista', [ProductoImportController::class, 'importarLista']);
+```
+
+## Mejores Prácticas
+
+1. **Usar estilos consistentes** - Define arrays de estilos reutilizables
+2. **Colores alternados** - Mejora legibilidad con filas de color alternado
+3. **Formato de números** - Aplica formato numérico apropiado (decimales, moneda)
+4. **Anchos de columna** - Configura anchos adecuados o usa autoSize
+5. **Fórmulas para totales** - Usa fórmulas Excel en lugar de valores estáticos
+6. **Headers de descarga** - Configura correctamente Content-Type y Content-Disposition
+7. **Archivos temporales** - Limpia archivos temporales después de descargar
+8. **Validación de datos** - Valida datos antes de exportar para evitar errores
+9. **Manejo de errores** - Captura excepciones y registra en logs
+10. **Permisos** - Verifica permisos del usuario antes de exportar datos sensibles
+
+## Paleta de Colores Utilizados
+
+```php
+// Encabezados
+'90BFEB' // Azul claro
+'E5E7EB' // Gris claro
+'F3F4F6' // Gris muy claro
+
+// Filas alternadas
+'F9FAFB' // Blanco hueso
+
+// Totales
+'FEF3C7' // Amarillo claro
+'F59E0B' // Naranja
+'92400E' // Marrón oscuro
+
+// Ejemplo
+'FFF9C4' // Amarillo muy claro
+'F0C040' // Amarillo dorado
+
+// Títulos
+'F97316' // Naranja brillante
+
+// Estados
+'059669' // Verde (ganancia positiva)
+'DC2626' // Rojo (ganancia negativa)
+```
