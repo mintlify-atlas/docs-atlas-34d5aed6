@@ -115,6 +115,7 @@
             "group": "Endpoints",
             "pages": [
               "api/ventas",
+              "api/compras",
               "api/notas-credito",
               "api/notas-debito",
               "api/guias-remision",
