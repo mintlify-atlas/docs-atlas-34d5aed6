@@ -1,0 +1,155 @@
+{
+  "projectType": "saas",
+  "projectName": "Sistema de Facturación Electrónica SUNAT",
+  "projectDescription": "Sistema completo de facturación electrónica peruana con integración SUNAT para emitir facturas, boletas, notas de crédito/débito y guías de remisión",
+  "theme": "linden",
+  "primaryColor": "#040404",
+  "lightColor": "#ef370f",
+  "darkColor": "#f79d72",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentación",
+        "groups": [
+          {
+            "group": "Inicio",
+            "pages": [
+              "introduction",
+              "features"
+            ]
+          },
+          {
+            "group": "Primeros Pasos",
+            "pages": [
+              "getting-started/installation",
+              "getting-started/configuration",
+              "getting-started/first-steps"
+            ]
+          },
+          {
+            "group": "Características Principales",
+            "pages": [
+              "features/invoicing",
+              "features/credit-debit-notes",
+              "features/delivery-guides",
+              "features/quotations",
+              "features/inventory",
+              "features/clients-suppliers"
+            ]
+          },
+          {
+            "group": "Gestión de Empresas",
+            "pages": [
+              "guides/multi-company",
+              "guides/users-roles",
+              "guides/permissions"
+            ]
+          },
+          {
+            "group": "Reportes y Exportación",
+            "pages": [
+              "guides/pdf-reports",
+              "guides/excel-exports"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integración SUNAT",
+        "groups": [
+          {
+            "group": "Configuración",
+            "pages": [
+              "sunat/overview",
+              "sunat/setup",
+              "sunat/certificates"
+            ]
+          },
+          {
+            "group": "Tipos de Documentos",
+            "pages": [
+              "sunat/facturas-boletas",
+              "sunat/credit-debit-notes",
+              "sunat/delivery-guides",
+              "sunat/daily-summary",
+              "sunat/voiding"
+            ]
+          },
+          {
+            "group": "Pruebas y Producción",
+            "pages": [
+              "sunat/testing",
+              "sunat/production",
+              "sunat/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Autenticación",
+            "pages": [
+              "api/authentication",
+              "api/authorization"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/ventas",
+              "api/notas-credito",
+              "api/notas-debito",
+              "api/guias-remision",
+              "api/cotizaciones",
+              "api/productos",
+              "api/clientes",
+              "api/proveedores"
+            ]
+          },
+          {
+            "group": "Recursos",
+            "pages": [
+              "api/empresas",
+              "api/usuarios",
+              "api/reportes"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Facturación electrónica (facturas y boletas) con validación SUNAT",
+    "Notas de crédito y débito electrónicas",
+    "Guías de remisión electrónicas (GRE)",
+    "Gestión de cotizaciones y conversión a ventas",
+    "Control de inventario con movimientos de stock",
+    "Gestión de clientes y proveedores",
+    "Soporte multi-empresa con permisos granulares",
+    "Generación de reportes PDF y exportación Excel",
+    "Integración completa con API REST de SUNAT",
+    "Resumen diario y comunicación de baja automática"
+  ],
+  "publicApiSurface": [
+    "POST /api/login - Autenticación de usuarios",
+    "POST /api/ventas - Crear factura o boleta",
+    "POST /api/notas-credito - Emitir nota de crédito",
+    "POST /api/notas-debito - Emitir nota de débito",
+    "POST /api/guias-remision - Crear guía de remisión",
+    "GET /api/ventas - Listar ventas",
+    "POST /api/ventas/{id}/enviar-sunat - Enviar comprobante a SUNAT",
+    "POST /api/ventas/{id}/anular - Anular venta",
+    "GET /api/cotizaciones - Listar cotizaciones",
+    "POST /api/cotizaciones - Crear cotización",
+    "GET /api/productos - Listar productos",
+    "POST /api/productos - Crear producto",
+    "GET /api/clientes - Listar clientes",
+    "POST /api/clientes - Crear cliente",
+    "GET /api/proveedores - Listar proveedores",
+    "POST /api/compras - Registrar compra",
+    "GET /api/dashboard/stats - Estadísticas del dashboard",
+    "POST /api/switch-empresa - Cambiar empresa activa"
+  ]
+}
